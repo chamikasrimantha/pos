@@ -1,7 +1,7 @@
 // src/app/page.tsx
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -31,6 +31,22 @@ function MainAppShell() {
     setSelectedOutletSlug,
     activeView,
   } = useApp();
+
+  // Defer rendering until after the first client-side effect so that
+  // localStorage-restored state (isAuthenticated, selectedOutletSlug) is
+  // available before we decide which UI to show. This prevents the
+  // server-rendered HTML (which never has localStorage) from diverging
+  // from the first client render and causing a hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  if (!mounted) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100vw", height: "100dvh" }}>
+        <div style={{ color: "var(--ink-2)", fontSize: "14px" }}>Loading…</div>
+      </div>
+    );
+  }
 
   // If not signed in, show outlet picker / sign in flow (Section 4)
   if (!isAuthenticated) {

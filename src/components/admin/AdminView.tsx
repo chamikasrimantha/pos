@@ -5,7 +5,6 @@ import React, { useState, useMemo } from "react";
 import { useApp } from "@/context/AppContext";
 import {
   getAuditLogs,
-  resetLocalStoreToDefaults,
   createUserProfile,
   updateUserProfile,
   toggleUserActive,
@@ -17,7 +16,6 @@ import {
   Store,
   Users,
   ScrollText,
-  RotateCcw,
   Sliders,
   Plus,
   ShieldAlert,
@@ -66,15 +64,6 @@ export function AdminView() {
       return true;
     });
   }, [auditLogs, auditFilterUser, auditFilterAction]);
-
-  // Handle Demo Reset (Staging Only)
-  const handleResetData = () => {
-    if (confirm("Reset database to baseline RightWay & Mega Shoes dataset? This is a staging tool that reinitializes sample inventory, branches, and users.")) {
-      resetLocalStoreToDefaults();
-      refreshData();
-      showToast("Database successfully re-seeded to baseline dataset.", "success");
-    }
-  };
 
   // Handle Create User
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -206,11 +195,8 @@ export function AdminView() {
             Branch settings, staff user permissions, business policy thresholds, and audit trails.
           </div>
         </div>
-
-        <button className="btn btn-secondary" onClick={handleResetData} title="Staging Demo Reset">
-          <RotateCcw size={16} /> Reset Demo Data
-        </button>
       </div>
+
 
       {/* Tabs */}
       <div className="seg-control" style={{ width: "fit-content" }}>

@@ -552,5 +552,145 @@ html, body {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   POS CART & FLOATING BAR (WP4)
+   ══════════════════════════════════════════════════════════════════════════ */
+.pos-cart-panel {
+  display: flex;
+  flex-direction: column;
+  width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-tile);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* Floating cart bar is strictly hidden on desktop (>=1024px) where cart is permanently visible */
+.mobile-cart-float-bar {
+  display: none !important;
+}
+
+.mobile-cart-close-btn {
+  display: none !important;
+}
+
+.pos-cart-line {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  min-height: 72px;
+  justify-content: center;
+  transition: background-color var(--motion-hover);
+}
+
+.pos-cart-line:hover {
+  background-color: var(--surface-sunken);
+}
+
+@keyframes cartFlash {
+  0% { background-color: var(--primary-soft); }
+  100% { background-color: transparent; }
+}
+
+.pos-cart-line.flash-highlight {
+  animation: cartFlash 350ms ease-out;
+}
+
+.cart-qty-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-2);
+  transition: all var(--motion-hover);
+}
+
+.cart-qty-btn:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+
+/* Below 1024px: cart panel becomes a full drawer and floating pill is shown */
+@media (max-width: 1023px) {
+  .pos-cart-panel {
+    display: none;
+    position: fixed !important;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 0 !important;
+    border: none !important;
+    z-index: 95;
+  }
+
+  .pos-cart-panel.open {
+    display: flex !important;
+  }
+
+  .mobile-cart-close-btn {
+    display: flex !important;
+  }
+
+  /* Compact pill: width fit-content, min 220px, max 340px, 48px high, centred */
+  .mobile-cart-float-bar {
+    display: flex !important;
+    position: fixed;
+    bottom: 16px;
+    left: 50% !important;
+    transform: translateX(-50%);
+    width: fit-content !important;
+    min-width: 220px;
+    max-width: 340px;
+    height: 48px;
+    padding: 0 16px;
+    background: var(--primary);
+    color: #ffffff;
+    border: none;
+    border-radius: 9999px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    z-index: 85;
+    box-shadow: 0 4px 14px rgba(32, 86, 200, 0.4);
+    font-family: inherit;
+    transition: transform var(--motion-hover), box-shadow var(--motion-hover);
+  }
+
+  .mobile-cart-float-bar:hover {
+    transform: translateX(-50%) translateY(-2px);
+    box-shadow: 0 6px 18px rgba(32, 86, 200, 0.5);
+  }
+
+  .cart-qty-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .pos-catalogue-scroll {
+    padding-bottom: calc(48px + 28px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+@media (max-width: 767px) {
+  /* On phones with bottom navigation bar, pill sits 16px above the bar */
+  .mobile-cart-float-bar {
+    bottom: calc(72px + 16px);
+  }
+}
+
+
 
 

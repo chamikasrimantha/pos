@@ -27,6 +27,7 @@ import {
   User,
   Phone,
   Camera,
+  ChevronRight,
 } from "lucide-react";
 
 interface CartItem {
@@ -60,6 +61,7 @@ export function PosView() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [billDiscount, setBillDiscount] = useState<number>(0);
+  const [lastAddedVariantId, setLastAddedVariantId] = useState<string | null>(null);
 
   // Payment Modal state
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -180,6 +182,8 @@ export function PosView() {
       ]);
     }
 
+    setLastAddedVariantId(variant.id);
+    setTimeout(() => setLastAddedVariantId(null), 350);
     showToast(`Added ${variant.productNameCache} (${variant.sizeLabelCache}) to cart`, "success");
   };
 
@@ -466,7 +470,7 @@ export function PosView() {
         </div>
 
         {/* Product tiles */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>
+        <div className="pos-catalogue-scroll" style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>
           <div style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
@@ -553,8 +557,10 @@ export function PosView() {
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <ShoppingCart size={18} style={{ color: "var(--ink-2)" }} />
             <span className="text-section-heading">Current sale</span>
-            <span style={{ fontSize: "14px", color: "var(--ink-2)" }}>
-              {cart.length === 0 ? "0 items" : `${cart.length} item${cart.length > 1 ? "s" : ""}`}
+            <span style={{ fontSize: "13px", color: "var(--ink-2)" }}>
+              {cart.length === 0
+                ? "0 items"
+                : `${cart.length} ${cart.length === 1 ? "item" : "items"} (${cart.reduce((s, i) => s + i.quantity, 0)} ${cart.reduce((s, i) => s + i.quantity, 0) === 1 ? "pair" : "pairs"})`}
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -637,53 +643,84 @@ export function PosView() {
             cart.map((item) => (
               <div
                 key={item.variant.id}
-                style={{
-                  display: "flex", flexDirection: "column", gap: "6px",
-                  padding: "12px 20px", borderBottom: "1px solid var(--line)",
-                  minHeight: "72px", justifyContent: "center",
-                }}
+                className={`pos-cart-line ${lastAddedVariantId === item.variant.id ? "flash-highlight" : ""}`}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: "15px", fontWeight: "600", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.variant.productNameCache}
-                    </div>
-                    <div style={{ fontSize: "14px", color: "var(--ink-2)" }}>
-                      {item.variant.colorNameCache}, {item.variant.sizeLabelCache}
-                    </div>
+                {/* Row 1: Product Name + Line Total */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "8px" }}>
+                  <div
+                    title={item.variant.productNameCache}
+                    style={{
+                      fontSize: "15px",
+                      fontWeight: 600,
+                      color: "var(--ink)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    {item.variant.productNameCache}
                   </div>
-                  <div style={{ fontVariantNumeric: "tabular-nums", fontSize: "15px", fontWeight: "600", color: "var(--ink)", marginLeft: "8px", flexShrink: 0 }}>
+                  <div style={{ fontVariantNumeric: "tabular-nums", fontSize: "15px", fontWeight: 600, color: "var(--ink)", flexShrink: 0 }}>
                     {formatCurrency(item.lineTotal)}
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <button
-                    onClick={() => updateQuantity(item.variant.id, -1)}
-                    aria-label="Decrease quantity"
-                    style={{ width: "44px", height: "44px", borderRadius: "var(--radius-control)", border: "1px solid var(--line-strong)", background: "var(--surface)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-2)" }}
-                  >
-                    <Minus size={14} />
-                  </button>
-                  <span style={{ width: "28px", textAlign: "center", fontSize: "15px", fontWeight: "600", fontVariantNumeric: "tabular-nums", color: "var(--ink)" }}>
-                    {item.quantity}
-                  </span>
-                  <button
-                    onClick={() => updateQuantity(item.variant.id, 1)}
-                    aria-label="Increase quantity"
-                    style={{ width: "44px", height: "44px", borderRadius: "var(--radius-control)", border: "1px solid var(--line-strong)", background: "var(--surface)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-2)" }}
-                  >
-                    <Plus size={14} />
-                  </button>
-                  <div style={{ fontSize: "13px", color: "var(--ink-3)", flex: 1 }}>
-                    {item.quantity} × {formatCurrency(item.unitPrice)}
+
+                {/* Row 2: Secondary text (Colour, Size, Unit Price) + Stepper & Remove */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: "13px", color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.variant.colorNameCache}, {item.variant.sizeLabelCache}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--ink-3)", fontVariantNumeric: "tabular-nums" }}>
+                      {formatCurrency(item.unitPrice)} each
+                    </div>
                   </div>
-                  <button
-                    onClick={() => removeItem(item.variant.id)}
-                    aria-label="Remove item"
-                    style={{ width: "44px", height: "44px", borderRadius: "var(--radius-control)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-3)" }}
-                  >
-                    <Trash2 size={15} />
-                  </button>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => updateQuantity(item.variant.id, -1)}
+                      aria-label="Decrease quantity"
+                      className="cart-qty-btn"
+                    >
+                      <Minus size={14} />
+                    </button>
+                    <span style={{ width: "24px", textAlign: "center", fontSize: "14px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "var(--ink)" }}>
+                      {item.quantity}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => updateQuantity(item.variant.id, 1)}
+                      aria-label="Increase quantity"
+                      className="cart-qty-btn"
+                    >
+                      <Plus size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeItem(item.variant.id)}
+                      aria-label="Remove item"
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        borderRadius: "var(--radius-control)",
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--ink-3)",
+                        marginLeft: "2px",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--danger)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--ink-3)")}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -741,50 +778,27 @@ export function PosView() {
         </div>
       </div>
 
-      {/* Mobile Floating Cart Summary Pill */}
+      {/* Mobile Floating Cart Summary Pill (shown only below 1024px where cart panel is hidden) */}
       {cart.length > 0 && !isMobileCartOpen && (
-        <div
+        <button
+          type="button"
           className="mobile-cart-float-bar"
           onClick={() => setIsMobileCartOpen(true)}
-          style={{
-            position: "fixed",
-            bottom: "74px",
-            left: "16px",
-            right: "16px",
-            padding: "12px 18px",
-            background: "var(--primary)",
-            color: "#ffffff",
-            borderRadius: "14px",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "pointer",
-            zIndex: 85,
-            boxShadow: "0 6px 16px rgba(32, 86, 200, 0.4)",
-          }}
+          aria-label="Open cart"
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <ShoppingCart size={20} />
-            <span style={{ fontWeight: "700", fontSize: "14px" }}>
-              {cart.reduce((s, i) => s + i.quantity, 0)} items in cart
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <ShoppingCart size={18} />
+            <span style={{ fontWeight: 700, fontSize: "14px" }}>
+              {cart.reduce((s, i) => s + i.quantity, 0)} {cart.reduce((s, i) => s + i.quantity, 0) === 1 ? "item" : "items"}
             </span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "17px", fontWeight: "900", fontVariantNumeric: "tabular-nums" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "15px", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
               {formatCurrency(netTotal)}
             </span>
-            <span
-              style={{
-                background: "rgba(255,255,255,0.22)",
-                padding: "4px 8px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: "600",
-              }}
-            >
-              View &rarr;
-            </span>
+            <ChevronRight size={18} />
           </div>
-        </div>
+        </button>
       )}
 
       {/* Camera Barcode Scanner Modal */}

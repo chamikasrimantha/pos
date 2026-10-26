@@ -42,13 +42,6 @@ export function SignInView({
     }
   };
 
-  // Demo shortcut credentials for rapid testing & staging evaluation
-  const setDemoCredentials = (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword("password123");
-    setErrorMessage(null);
-  };
-
   return (
     <div
       style={{
@@ -218,64 +211,6 @@ export function SignInView({
           </button>
         </form>
 
-        {/* Demo Accounts Panel (Section 4.6 for reviewer convenience) */}
-        <div style={{ borderTop: "1px dashed var(--line)", paddingTop: "14px", marginTop: "6px" }}>
-          <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--ink-3)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Staging Quick Demo Accounts:
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-            {outletSlug === "rightway" && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setDemoCredentials("cashier.rw@shoes.pos")}
-                  className="chip"
-                  style={{ fontSize: "12px" }}
-                >
-                  RW Cashier (Nadeeka)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDemoCredentials("manager.rw@shoes.pos")}
-                  className="chip"
-                  style={{ fontSize: "12px" }}
-                >
-                  RW Manager (Kasun)
-                </button>
-              </>
-            )}
-
-            {outletSlug === "mega" && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setDemoCredentials("cashier.mg@shoes.pos")}
-                  className="chip"
-                  style={{ fontSize: "12px" }}
-                >
-                  Mega Cashier (Dinesh)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDemoCredentials("manager.mg@shoes.pos")}
-                  className="chip"
-                  style={{ fontSize: "12px" }}
-                >
-                  Mega Manager (Nuwan)
-                </button>
-              </>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setDemoCredentials("admin@shoes.pos")}
-              className="chip chip-active"
-              style={{ fontSize: "12px" }}
-            >
-              Super Admin (Senaka)
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -200,12 +200,6 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
   }
 }
 
-export function resetLocalStoreToDefaults(): LocalStoreState {
-  const initial = getInitialStore();
-  saveLocalStore(initial);
-  return initial;
-}
-
 // ==========================================
 // 2. COUNTERS & SEQUENTIAL NUMBER GENERATOR
 // ==========================================
