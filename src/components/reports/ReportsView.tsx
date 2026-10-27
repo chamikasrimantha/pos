@@ -13,6 +13,7 @@ import {
   getCheques,
 } from "@/lib/firestore-service";
 import { formatCurrency, formatDate } from "@/lib/receipt-generator";
+import { computeExpectedDrawerCash } from "@/lib/shift-math";
 import {
   BarChart3,
   TrendingUp,
@@ -21,12 +22,14 @@ import {
   Boxes,
   Building2,
   Download,
+  Calendar,
 } from "lucide-react";
+import { DailySalesView } from "./DailySalesView";
 
 export function ReportsView() {
   const { activeShop, dataVersion } = useApp();
 
-  const [reportType, setReportType] = useState<"SALES" | "SHIFTS" | "REPAIRS" | "STOCK">("SALES");
+  const [reportType, setReportType] = useState<"DAILY_SALES" | "SALES" | "SHIFTS" | "REPAIRS" | "STOCK">("DAILY_SALES");
 
   // Load all operational collections for active shop
   const shifts = useMemo(() => getShiftHistory(activeShop.id), [activeShop.id, dataVersion]);
@@ -82,7 +85,7 @@ export function ReportsView() {
       shifts.forEach((s) => {
         csvContent += `"${s.shiftNumber}","${s.cashierNameCache}","${formatDate(s.openedAt)}","${
           s.closedAt ? formatDate(s.closedAt) : "OPEN"
-        }",${s.openingFloat},${s.cashSales},${s.cardSales},${s.cashRefunds || 0},${s.expectedCash},${
+        }",${s.openingFloat},${s.cashSales},${s.cardSales},${s.cashRefunds || 0},${computeExpectedDrawerCash(s)},${
           s.actualCashCounted || 0
         },${s.variance || 0},"${s.status}"\n`;
       });
@@ -236,6 +239,12 @@ export function ReportsView() {
       {/* Tabs */}
       <div className="seg-control" style={{ width: "fit-content" }}>
         <button
+          className={reportType === "DAILY_SALES" ? "active" : ""}
+          onClick={() => setReportType("DAILY_SALES")}
+        >
+          <Calendar size={15} /> Daily sales & reports
+        </button>
+        <button
           className={reportType === "SALES" ? "active" : ""}
           onClick={() => setReportType("SALES")}
         >
@@ -255,16 +264,23 @@ export function ReportsView() {
         </button>
       </div>
 
+      {reportType === "DAILY_SALES" && (
+        <div style={{ marginTop: "16px" }}>
+          <DailySalesView />
+        </div>
+      )}
+
       {/* Report Tables */}
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--line)",
-          borderRadius: "var(--radius-tile)",
-          overflow: "hidden",
-        }}
-      >
-        {reportType === "SALES" && (
+      {reportType !== "DAILY_SALES" && (
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--line)",
+            borderRadius: "var(--radius-tile)",
+            overflow: "hidden",
+          }}
+        >
+          {reportType === "SALES" && (
           <div style={{ overflowX: "auto" }}>
             <table className="pos-table">
               <thead>
@@ -389,6 +405,7 @@ export function ReportsView() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

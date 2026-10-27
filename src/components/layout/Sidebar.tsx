@@ -17,6 +17,8 @@ import {
   ShieldCheck,
   Footprints,
   LogOut,
+  Receipt,
+  CalendarCheck,
 } from "lucide-react";
 
 interface NavItem {
@@ -29,17 +31,19 @@ export function Sidebar() {
   const { activeView, setActiveView, currentUser, isModuleVisible, logout } = useApp();
 
   const allNavItems: NavItem[] = [
-    { id: "pos",       label: "POS Counter",         icon: ShoppingBag },
-    { id: "shifts",    label: "Cash Drawer & Shifts", icon: Coins },
-    { id: "returns",   label: "Returns & Exchanges",  icon: RotateCcw },
-    { id: "repairs",   label: "Shoe Repair Desk",     icon: Wrench },
-    { id: "transfers", label: "Branch Transfers",     icon: ArrowLeftRight },
-    { id: "inventory", label: "Stock & Inventory",    icon: Boxes },
-    { id: "products",  label: "Product Catalog",      icon: Tag },
-    { id: "purchases", label: "Purchasing Inward",    icon: Truck },
-    { id: "suppliers", label: "Suppliers & Cheques",  icon: Building2 },
-    { id: "reports",   label: "Reports & Analytics",  icon: BarChart3 },
-    { id: "admin",     label: "Admin & Settings",     icon: ShieldCheck },
+    { id: "pos",          label: "POS Counter",          icon: ShoppingBag },
+    { id: "shifts",       label: "Cash Drawer & Shifts",  icon: Coins },
+    { id: "invoices",     label: "Invoices & Receipts",   icon: Receipt },
+    { id: "returns",      label: "Returns & Exchanges",   icon: RotateCcw },
+    { id: "repairs",      label: "Shoe Repair Desk",      icon: Wrench },
+    { id: "transfers",    label: "Branch Transfers",      icon: ArrowLeftRight },
+    { id: "inventory",    label: "Stock & Inventory",     icon: Boxes },
+    { id: "products",     label: "Product Catalog",       icon: Tag },
+    { id: "purchases",    label: "Purchasing Inward",     icon: Truck },
+    { id: "suppliers",    label: "Suppliers & Cheques",   icon: Building2 },
+    { id: "reports",      label: "Reports & Analytics",   icon: BarChart3 },
+    { id: "dayEndStatus", label: "Day-end Status",        icon: CalendarCheck },
+    { id: "admin",        label: "Admin & Settings",      icon: ShieldCheck },
   ];
 
   // Filter navigation items by role access (Section 5.2)

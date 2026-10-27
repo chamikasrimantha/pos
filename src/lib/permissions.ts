@@ -205,19 +205,21 @@ export function isModuleVisible(role: UserRole, moduleId: string): boolean {
   switch (moduleId) {
     case "pos":
     case "shifts":
+    case "invoices":
     case "returns":
     case "repairs":
-      return true; // All roles see operational desk modules
+    case "reports":
+      return true; // All roles see operational desk modules, invoices, and sales reports (scoped to own sales)
 
     case "transfers":
     case "inventory":
     case "products":
     case "purchases":
-    case "reports":
-      return role === "SHOP_MANAGER"; // Managers see inventory, transfers, catalog, inward, reports
+      return role === "SHOP_MANAGER"; // Managers see inventory, transfers, catalog, inward
 
     case "suppliers":
     case "admin":
+    case "dayEndStatus":
       return false; // Strictly SUPER_ADMIN only
 
     default:

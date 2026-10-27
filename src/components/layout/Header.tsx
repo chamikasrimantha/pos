@@ -4,6 +4,8 @@
 import React from "react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/receipt-generator";
+import { computeExpectedDrawerCash } from "@/lib/shift-math";
+import { formatColomboTime } from "@/lib/date-utils";
 import { RotateCw, ChevronDown, User, CheckCircle2, Lock, LogOut } from "lucide-react";
 
 export function Header() {
@@ -19,9 +21,7 @@ export function Header() {
     logout,
   } = useApp();
 
-  const shiftSince = activeShift
-    ? new Date(activeShift.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : "";
+  const shiftSince = activeShift ? formatColomboTime(activeShift.openedAt) : "";
 
   const isAdmin = currentUser?.role === "SUPER_ADMIN";
 
@@ -120,14 +120,7 @@ export function Header() {
               Shift #{activeShift.shiftNumber.slice(-4)} &bull; Since {shiftSince}
             </span>
             <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: "700" }}>
-              {formatCurrency(
-                activeShift.openingFloat +
-                  activeShift.cashSales +
-                  (activeShift.repairCashIn || 0) +
-                  (activeShift.cashPaidIn || 0) -
-                  (activeShift.cashRefunds || 0) -
-                  (activeShift.cashPayouts || 0)
-              )}
+              {formatCurrency(computeExpectedDrawerCash(activeShift))}
             </span>
           </button>
         ) : (

@@ -22,8 +22,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={ibmPlexSans.variable}>
-      <body style={{ fontFamily: "var(--font-ibm-plex), system-ui, sans-serif" }}>
+    <html lang="en" className={ibmPlexSans.variable} suppressHydrationWarning>
+      <body
+        style={{ fontFamily: "var(--font-ibm-plex), system-ui, sans-serif" }}
+        suppressHydrationWarning
+      >
         {children}
       </body>
     </html>

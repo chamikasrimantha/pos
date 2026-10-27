@@ -11,6 +11,7 @@ import {
   getCashMovementsForShift,
 } from "@/lib/firestore-service";
 import { formatCurrency, formatDate, renderZReportHTML } from "@/lib/receipt-generator";
+import { computeExpectedDrawerCash, computeShiftVariance } from "@/lib/shift-math";
 import { CashierShift } from "@/types";
 import {
   Coins,
@@ -109,6 +110,17 @@ export function ShiftManager() {
       return;
     }
 
+    if (movementType === "PAID_OUT" || movementType === "SAFE_DROP") {
+      const currentExpected = computeExpectedDrawerCash(activeShift);
+      if (amt > currentExpected) {
+        showToast(
+          `Cannot remove Rs. ${amt}. Amount exceeds current expected drawer cash of ${formatCurrency(currentExpected)}.`,
+          "error"
+        );
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       await recordCashMovement({
@@ -144,7 +156,8 @@ export function ShiftManager() {
       return;
     }
 
-    const variance = countedAmount - activeShift.expectedCash;
+    const expectedCash = computeExpectedDrawerCash(activeShift);
+    const variance = computeShiftVariance(countedAmount, expectedCash);
     if (variance !== 0 && !varianceReason.trim()) {
       showToast("Mandatory: Please provide explanation notes for cash variance.", "error");
       return;
@@ -179,7 +192,7 @@ export function ShiftManager() {
     if (!countedCashInput || !activeShift) return 0;
     const counted = parseFloat(countedCashInput);
     if (isNaN(counted)) return 0;
-    return counted - activeShift.expectedCash;
+    return computeShiftVariance(counted, computeExpectedDrawerCash(activeShift));
   }, [countedCashInput, activeShift]);
 
   return (
@@ -198,7 +211,7 @@ export function ShiftManager() {
         <div style={{ display: "flex", gap: "8px" }}>
           {activeShift && (currentUser?.role === "SUPER_ADMIN" || currentUser?.role === "SHOP_MANAGER") && (
             <button className="btn btn-secondary" onClick={() => setIsMovementModalOpen(true)}>
-              <Coins size={16} /> Cash movement
+              <Coins size={16} /> Remove cash
             </button>
           )}
           {!activeShift ? (
@@ -257,15 +270,15 @@ export function ShiftManager() {
                 Expected drawer cash
               </div>
               <div style={{ fontSize: "28px", fontWeight: "700", color: "var(--ink)", fontVariantNumeric: "tabular-nums", marginTop: "2px" }}>
-                {formatCurrency(activeShift.expectedCash)}
+                {formatCurrency(computeExpectedDrawerCash(activeShift))}
               </div>
             </div>
           </div>
 
-          {/* Real-time cash movement metrics */}
+          {/* Real-time cash movement metrics in mandatory order */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
             <div style={{ padding: "14px 16px", background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: "var(--radius-control)" }}>
-              <div style={{ fontSize: "13px", color: "var(--ink-3)" }}>Opening cash float</div>
+              <div style={{ fontSize: "13px", color: "var(--ink-3)" }}>Opening float</div>
               <div style={{ fontSize: "16px", fontWeight: "600", color: "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
                 {formatCurrency(activeShift.openingFloat)}
               </div>
@@ -286,9 +299,23 @@ export function ShiftManager() {
             </div>
 
             <div style={{ padding: "14px 16px", background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: "var(--radius-control)" }}>
-              <div style={{ fontSize: "13px", color: "var(--ink-3)" }}>Customer cash refunds</div>
+              <div style={{ fontSize: "13px", color: "var(--ink-3)" }}>Cash refunds</div>
               <div style={{ fontSize: "16px", fontWeight: "600", color: (activeShift.cashRefunds || 0) > 0 ? "var(--danger)" : "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
-                {formatCurrency(activeShift.cashRefunds || 0)}
+                -{formatCurrency(activeShift.cashRefunds || 0)}
+              </div>
+            </div>
+
+            <div style={{ padding: "14px 16px", background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: "var(--radius-control)" }}>
+              <div style={{ fontSize: "13px", color: "var(--ink-3)" }}>Cash removed from the drawer</div>
+              <div style={{ fontSize: "16px", fontWeight: "600", color: (activeShift.cashPayouts || 0) > 0 ? "var(--warning)" : "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+                -{formatCurrency(activeShift.cashPayouts || 0)}
+              </div>
+            </div>
+
+            <div style={{ padding: "14px 16px", background: "var(--surface-sunken)", border: "1px solid var(--primary-soft)", borderRadius: "var(--radius-control)" }}>
+              <div style={{ fontSize: "13px", color: "var(--primary)", fontWeight: "600" }}>Expected drawer cash</div>
+              <div style={{ fontSize: "16px", fontWeight: "700", color: "var(--primary)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+                {formatCurrency(computeExpectedDrawerCash(activeShift))}
               </div>
             </div>
 
@@ -296,20 +323,6 @@ export function ShiftManager() {
               <div style={{ fontSize: "13px", color: "var(--ink-3)" }}>Card sales (reconciled)</div>
               <div style={{ fontSize: "16px", fontWeight: "600", color: "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
                 {formatCurrency(activeShift.cardSales)}
-              </div>
-            </div>
-
-            <div style={{ padding: "14px 16px", background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: "var(--radius-control)" }}>
-              <div style={{ fontSize: "13px", color: "var(--ink-3)" }}>Cash paid in</div>
-              <div style={{ fontSize: "16px", fontWeight: "600", color: (activeShift.cashPaidIn || 0) > 0 ? "var(--success)" : "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
-                +{formatCurrency(activeShift.cashPaidIn || 0)}
-              </div>
-            </div>
-
-            <div style={{ padding: "14px 16px", background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: "var(--radius-control)" }}>
-              <div style={{ fontSize: "13px", color: "var(--ink-3)" }}>Payouts & safe drops</div>
-              <div style={{ fontSize: "16px", fontWeight: "600", color: (activeShift.cashPayouts || 0) > 0 ? "var(--warning)" : "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
-                -{formatCurrency(activeShift.cashPayouts || 0)}
               </div>
             </div>
           </div>
@@ -547,7 +560,7 @@ export function ShiftManager() {
               </button>
             </div>
 
-            {/* Expected Summary */}
+            {/* Expected Summary in exact mandatory order */}
             <div
               style={{
                 background: "var(--canvas)",
@@ -566,22 +579,26 @@ export function ShiftManager() {
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(activeShift.openingFloat)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", color: "var(--ink-2)" }}>
-                <span>Cash sales (+):</span>
+                <span>Cash sales:</span>
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(activeShift.cashSales)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", color: "var(--ink-2)" }}>
-                <span>Repair cash collected (+):</span>
+                <span>Repair cash collected:</span>
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(activeShift.repairCashIn || 0)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", color: (activeShift.cashRefunds || 0) > 0 ? "var(--danger)" : "var(--ink-2)" }}>
-                <span>Cash refunds (-):</span>
+                <span>Cash refunds:</span>
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>-{formatCurrency(activeShift.cashRefunds || 0)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", color: (activeShift.cashPayouts || 0) > 0 ? "var(--warning)" : "var(--ink-2)" }}>
+                <span>Cash removed from the drawer:</span>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>-{formatCurrency(activeShift.cashPayouts || 0)}</span>
               </div>
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  fontWeight: "600",
+                  fontWeight: "700",
                   fontSize: "15px",
                   borderTop: "1px solid var(--line)",
                   paddingTop: "8px",
@@ -590,7 +607,7 @@ export function ShiftManager() {
                 }}
               >
                 <span>Expected drawer cash:</span>
-                <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(activeShift.expectedCash)}</span>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(computeExpectedDrawerCash(activeShift))}</span>
               </div>
             </div>
 

@@ -56,7 +56,16 @@ import {
   SEED_SUPPLIERS,
   SEED_USERS,
   DEFAULT_SETTINGS,
+  SEED_SALES,
+  SEED_SALE_ITEMS,
 } from "./seed-data";
+import { computeExpectedDrawerCash } from "./shift-math";
+import {
+  getColomboDayRange,
+  getColomboMonthRange,
+  formatColomboDateKey,
+  getColomboDateParts,
+} from "./date-utils";
 
 // Helper for local state caching / fallback in browser
 const LOCAL_STORAGE_KEY = "RIGHTWAY_MEGA_POS_STORE_V2";
@@ -109,8 +118,8 @@ function getInitialStore(): LocalStoreState {
     movements: [],
     shifts: [],
     cashMovements: [],
-    sales: [],
-    saleItems: [],
+    sales: [...SEED_SALES],
+    saleItems: [...SEED_SALE_ITEMS],
     returns: [],
     repairs: [],
     transfers: [],
@@ -153,6 +162,10 @@ function loadLocalStore(): LocalStoreState {
     if (!parsed.stockCounts) parsed.stockCounts = [];
     if (!parsed.cashMovements) parsed.cashMovements = [];
     if (!parsed.settings) parsed.settings = { ...DEFAULT_SETTINGS };
+    if (!parsed.sales || parsed.sales.length === 0) {
+      parsed.sales = [...SEED_SALES];
+      parsed.saleItems = [...SEED_SALE_ITEMS];
+    }
     return parsed;
   } catch (err) {
     console.warn("Failed to parse local POS store:", err);
@@ -390,14 +403,7 @@ export async function closeCashierShift(params: {
   if (!shift) throw new Error("Shift not found");
   if (shift.status === "CLOSED") throw new Error("Shift is already closed");
 
-  const expectedCash =
-    shift.openingFloat +
-    shift.cashSales +
-    (shift.repairCashIn || 0) +
-    (shift.cashPaidIn || 0) -
-    (shift.cashRefunds || 0) -
-    (shift.cashPayouts || 0);
-
+  const expectedCash = computeExpectedDrawerCash(shift);
   const variance = params.actualCashCounted - expectedCash;
 
   shift.status = "CLOSED";
@@ -464,8 +470,16 @@ export async function recordCashMovement(params: {
   if (params.type === "PAID_IN") {
     shift.cashPaidIn = (shift.cashPaidIn || 0) + params.amount;
   } else {
+    const currentExpected = computeExpectedDrawerCash(shift);
+    if (params.amount > currentExpected) {
+      throw new Error(
+        `Cannot remove Rs. ${params.amount}. Amount exceeds current expected drawer cash of Rs. ${currentExpected}.`
+      );
+    }
     shift.cashPayouts = (shift.cashPayouts || 0) + params.amount;
   }
+
+  shift.expectedCash = computeExpectedDrawerCash(shift);
 
   store.cashMovements.push(movement);
   logAuditAction(store, {
@@ -628,6 +642,7 @@ export async function completeSale(params: {
       shift.transferSales += pay.amount;
     }
   }
+  shift.expectedCash = computeExpectedDrawerCash(shift);
 
   store.sales.push(createdSale);
   store.saleItems.push(...createdItems);
@@ -658,13 +673,167 @@ export async function completeSale(params: {
 }
 
 // ==========================================
-// 6. CUSTOMER RETURNS & SIZE EXCHANGES
+// 6. INVOICES & USER ACCESSIBILITY ENGINE
 // ==========================================
-export function findSaleByInvoice(invoiceNumber: string): { sale: Sale; items: SaleItem[] } | null {
+export interface InvoiceFilters {
+  search?: string;
+  startDate?: number;
+  endDate?: number;
+  status?: "ALL" | "COMPLETED" | "PARTIALLY_RETURNED" | "FULLY_RETURNED" | "CANCELLED";
+  paymentMethod?: "ALL" | "CASH" | "CARD" | "BANK_TRANSFER";
+  shopId?: string;
+  cashierId?: string;
+}
+
+export interface InvoicesQueryResult {
+  invoices: Sale[];
+  itemsBySaleId: Record<string, SaleItem[]>;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/**
+ * Retrieves invoices strictly filtered by user role and filters.
+ * CASHIER and SHOP_MANAGER can ONLY view invoices where cashierId === user.uid.
+ * SUPER_ADMIN can view all sales across all cashiers and outlets.
+ */
+export function getInvoicesForUser(
+  user: UserProfile,
+  filters: InvoiceFilters = {},
+  page: number = 1,
+  pageSize: number = 50
+): InvoicesQueryResult {
+  if (!user) {
+    return { invoices: [], itemsBySaleId: {}, totalCount: 0, page: 1, pageSize, totalPages: 0 };
+  }
+
+  // Security enforcement at data layer:
+  // If a Cashier or Shop Manager tries to pass another cashierId filter, reject and return empty
+  if (user.role !== "SUPER_ADMIN" && filters.cashierId && filters.cashierId !== user.uid) {
+    return { invoices: [], itemsBySaleId: {}, totalCount: 0, page: 1, pageSize, totalPages: 0 };
+  }
+
+  const store = loadLocalStore();
+  let sales = [...store.sales];
+
+  // 1. Enforce Role Visibility
+  if (user.role === "CASHIER" || user.role === "SHOP_MANAGER") {
+    sales = sales.filter((s) => s.cashierId === user.uid);
+  } else if (user.role === "SUPER_ADMIN") {
+    if (filters.cashierId && filters.cashierId !== "ALL") {
+      sales = sales.filter((s) => s.cashierId === filters.cashierId);
+    }
+    if (filters.shopId && filters.shopId !== "ALL") {
+      sales = sales.filter((s) => s.shopId === filters.shopId);
+    }
+  }
+
+  // 2. Date Range Filter
+  if (filters.startDate !== undefined) {
+    sales = sales.filter((s) => s.createdAt >= filters.startDate!);
+  }
+  if (filters.endDate !== undefined) {
+    sales = sales.filter((s) => s.createdAt <= filters.endDate!);
+  }
+
+  // 3. Status Filter
+  if (filters.status && filters.status !== "ALL") {
+    if (filters.status === "COMPLETED") {
+      sales = sales.filter((s) => s.status === "COMPLETED" && (s.returnStatus === "NONE" || !s.returnStatus));
+    } else if (filters.status === "PARTIALLY_RETURNED") {
+      sales = sales.filter((s) => s.returnStatus === "PARTIALLY_RETURNED");
+    } else if (filters.status === "FULLY_RETURNED") {
+      sales = sales.filter((s) => s.returnStatus === "FULLY_RETURNED");
+    } else if (filters.status === "CANCELLED") {
+      sales = sales.filter((s) => s.status === "CANCELLED");
+    }
+  }
+
+  // 4. Payment Method Filter
+  if (filters.paymentMethod && filters.paymentMethod !== "ALL") {
+    sales = sales.filter((s) => s.payments?.some((p) => p.method === filters.paymentMethod));
+  }
+
+  // 5. Search Filter (Partial invoice #, customer name, customer phone, exact total)
+  if (filters.search && filters.search.trim()) {
+    const q = filters.search.toLowerCase().trim();
+    const cleanNum = parseFloat(q.replace(/[^0-9.]/g, ""));
+    const hasNum = !isNaN(cleanNum) && cleanNum > 0;
+
+    sales = sales.filter((s) => {
+      const matchInv = s.invoiceNumber.toLowerCase().includes(q);
+      const matchCust = s.customerName ? s.customerName.toLowerCase().includes(q) : false;
+      const matchPhone = s.customerPhone ? s.customerPhone.includes(q) : false;
+      const matchAmount = hasNum && Math.abs(s.total - cleanNum) < 0.01;
+      return matchInv || matchCust || matchPhone || matchAmount;
+    });
+  }
+
+  // Sort: newest first
+  sales.sort((a, b) => b.createdAt - a.createdAt);
+
+  const totalCount = sales.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const currentPage = Math.max(1, Math.min(page, totalPages));
+  const paginatedSales = sales.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  const itemsBySaleId: Record<string, SaleItem[]> = {};
+  for (const s of paginatedSales) {
+    itemsBySaleId[s.id] = store.saleItems.filter((i) => i.saleId === s.id);
+  }
+
+  return {
+    invoices: paginatedSales,
+    itemsBySaleId,
+    totalCount,
+    page: currentPage,
+    pageSize,
+    totalPages,
+  };
+}
+
+export function logInvoiceReprint(user: UserProfile, sale: Sale): void {
+  const store = loadLocalStore();
+  logAuditAction(store, {
+    userId: user.uid,
+    userEmailCache: user.displayName,
+    action: "INVOICE_REPRINT_DUPLICATE",
+    entityType: "sales",
+    entityId: sale.id,
+    shopId: sale.shopId,
+    reason: `Reprinted invoice ${sale.invoiceNumber} marked DUPLICATE`,
+  });
+  saveLocalStore(store);
+}
+
+// ==========================================
+// 7. CUSTOMER RETURNS & SIZE EXCHANGES
+// ==========================================
+export function findSaleByInvoice(
+  invoiceNumber: string,
+  requestingUser?: UserProfile | null
+): { sale: Sale; items: SaleItem[] } | null {
   const store = loadLocalStore();
   const sale = store.sales.find((s) => s.invoiceNumber.trim().toUpperCase() === invoiceNumber.trim().toUpperCase());
   if (!sale) return null;
   const items = store.saleItems.filter((i) => i.saleId === sale.id);
+
+  // If a colleague looks up another staff member's invoice for return processing, audit log it (Decision D1)
+  if (requestingUser && requestingUser.uid !== sale.cashierId) {
+    logAuditAction(store, {
+      userId: requestingUser.uid,
+      userEmailCache: requestingUser.displayName,
+      action: "RETURN_COLLEAGUE_INVOICE_LOOKUP",
+      entityType: "sales",
+      entityId: sale.id,
+      shopId: sale.shopId,
+      reason: `Looked up invoice ${sale.invoiceNumber} (issued by ${sale.cashierNameCache}) for return processing`,
+    });
+    saveLocalStore(store);
+  }
+
   return { sale, items };
 }
 
@@ -808,6 +977,7 @@ export async function processCustomerReturn(params: {
   } else if (params.refundMethod === "CASH") {
     shift.cashRefunds += netRefund;
   }
+  shift.expectedCash = computeExpectedDrawerCash(shift);
 
   // Update original sale returnStatus
   const origSale = store.sales.find((s) => s.id === params.originalSale.id);
@@ -936,6 +1106,7 @@ export async function createRepairOrder(params: {
 
   if (params.advancePaid > 0 && params.advancePaymentMethod === "CASH" && shift) {
     shift.repairCashIn = (shift.repairCashIn || 0) + params.advancePaid;
+    shift.expectedCash = computeExpectedDrawerCash(shift);
   }
 
   store.repairs.push(repair);
@@ -1048,6 +1219,7 @@ export async function deliverRepairOrder(params: {
 
   if (balanceToCollect > 0 && params.deliveryPaymentMethod === "CASH") {
     shift.repairCashIn = (shift.repairCashIn || 0) + balanceToCollect;
+    shift.expectedCash = computeExpectedDrawerCash(shift);
   }
 
   logAuditAction(store, {
@@ -1975,4 +2147,454 @@ export function getAuditLogs(shopId?: string): AuditLog[] {
   const store = loadLocalStore();
   if (!shopId) return store.auditLogs;
   return store.auditLogs.filter((a) => !a.shopId || a.shopId === shopId);
+}
+
+// ==========================================
+// 15. DAILY SALES & DAY-END STATUS AGGREGATIONS
+// ==========================================
+
+export interface DailySalesData {
+  dateKey: string;
+  dateDisplay: string;
+  shopId: string;
+  grossSales: number;
+  itemDiscounts: number;
+  billDiscounts: number;
+  refunds: number;
+  netSales: number;
+  invoiceCount: number;
+  payments: {
+    cash: number;
+    card: number;
+    bankTransfer: number;
+  };
+  repairIncome: number;
+  shifts: {
+    id: string;
+    cashierName: string;
+    cashierId: string;
+    openedAt: number;
+    closedAt?: number;
+    status: string;
+    openingFloat: number;
+    cashSales: number;
+    cashRefunds: number;
+    repairCashIn: number;
+    cashDrops: number;
+    expectedCash: number;
+    closingCountedCash?: number;
+    variance?: number;
+  }[];
+  sales: Sale[];
+  itemsBySaleId: Record<string, SaleItem[]>;
+}
+
+export interface MonthDailySummaryItem {
+  day: number;
+  dateKey: string;
+  dayOfWeek: string;
+  invoiceCount: number;
+  netSales: number;
+  hasSales: boolean;
+}
+
+export interface DayEndStatusData {
+  dateKey: string;
+  shopId: string;
+  totalInvoices: number;
+  completedInvoices: number;
+  partiallyReturnedInvoices: number;
+  fullyReturnedInvoices: number;
+  cancelledInvoices: number;
+  grossSales: number;
+  refunds: number;
+  netSales: number;
+  payments: {
+    cash: number;
+    card: number;
+    bankTransfer: number;
+  };
+  repairIncome: number;
+  firstInvoiceNumber: string | null;
+  lastInvoiceNumber: string | null;
+  missingInvoices: string[];
+  shifts: {
+    id: string;
+    cashierName: string;
+    cashierId: string;
+    status: string;
+    openedAt: number;
+    closedAt?: number;
+    openingFloat: number;
+    cashSales: number;
+    repairCashIn: number;
+    cashRefunds: number;
+    cashDrops: number;
+    expectedCash: number;
+    closingCountedCash?: number;
+    variance?: number;
+    isOpen: boolean;
+  }[];
+  totalExpectedDrawerCash: number;
+  totalActualCountedCash: number;
+  totalVariance: number;
+  allShiftsClosed: boolean;
+  shiftSalesSum: number;
+  salesReconciliationMismatch: boolean;
+  sales: Sale[];
+}
+
+/**
+ * Returns comprehensive daily sales figures, payments breakdown, and shifts for a specific date in Asia/Colombo.
+ * Scoped to cashier's own sales if requestingUser is Cashier or Manager.
+ */
+export function getDailySalesData(
+  shopId: string,
+  dayTimestamp: number,
+  requestingUser?: UserProfile
+): DailySalesData {
+  const store = loadLocalStore();
+  const { startOfDay, endOfDay, dateKey } = getColomboDayRange(dayTimestamp);
+
+  // Filter sales for the day and outlet
+  let daySales = store.sales.filter(
+    (s) => s.createdAt >= startOfDay && s.createdAt <= endOfDay
+  );
+
+  if (shopId && shopId !== "ALL") {
+    daySales = daySales.filter((s) => s.shopId === shopId);
+  }
+
+  // Scoped to requesting user if not Super Admin
+  if (requestingUser && requestingUser.role !== "SUPER_ADMIN") {
+    daySales = daySales.filter((s) => s.cashierId === requestingUser.uid);
+  }
+
+  // Calculate totals
+  let grossSales = 0;
+  let itemDiscounts = 0;
+  let billDiscounts = 0;
+  let refunds = 0;
+  let netSales = 0;
+  const payments = { cash: 0, card: 0, bankTransfer: 0 };
+  const itemsBySaleId: Record<string, SaleItem[]> = {};
+
+  daySales.forEach((sale) => {
+    if (sale.status === "COMPLETED") {
+      grossSales += sale.subtotal || 0;
+      itemDiscounts += sale.discount || 0;
+      refunds += sale.returnedAmount || 0;
+      netSales += sale.total || 0;
+
+      if (sale.payments && sale.payments.length > 0) {
+        sale.payments.forEach((p) => {
+          if (p.method === "CASH") payments.cash += p.amount;
+          else if (p.method === "CARD") payments.card += p.amount;
+          else if (p.method === "BANK_TRANSFER") payments.bankTransfer += p.amount;
+        });
+      }
+    }
+
+    itemsBySaleId[sale.id] = store.saleItems.filter((it) => it.saleId === sale.id);
+  });
+
+  // Shifts of the day
+  let dayShifts = store.shifts.filter((sh) => {
+    const matchesShop = shopId === "ALL" || sh.shopId === shopId;
+    const matchesTime =
+      sh.openedAt <= endOfDay && (!sh.closedAt || sh.closedAt >= startOfDay);
+    return matchesShop && matchesTime;
+  });
+
+  if (requestingUser && requestingUser.role !== "SUPER_ADMIN") {
+    dayShifts = dayShifts.filter((sh) => sh.cashierId === requestingUser.uid);
+  }
+
+  const shiftSummaries = dayShifts.map((sh) => ({
+    id: sh.id,
+    cashierName: sh.cashierNameCache || "Cashier",
+    cashierId: sh.cashierId,
+    openedAt: sh.openedAt,
+    closedAt: sh.closedAt || undefined,
+    status: sh.status,
+    openingFloat: sh.openingFloat,
+    cashSales: sh.cashSales || 0,
+    cashRefunds: sh.cashRefunds || 0,
+    repairCashIn: sh.repairCashIn || 0,
+    cashDrops: sh.cashPayouts || 0,
+    expectedCash: computeExpectedDrawerCash(sh),
+    closingCountedCash: sh.actualCashCounted,
+    variance: sh.variance,
+  }));
+
+  // Repair income for the day
+  let repairIncome = 0;
+  store.repairs.forEach((r) => {
+    const matchesShop = shopId === "ALL" || r.shopId === shopId;
+    if (!matchesShop) return;
+    if (r.receivedAt >= startOfDay && r.receivedAt <= endOfDay && r.advancePaid > 0) {
+      repairIncome += r.advancePaid;
+    }
+    if (r.completedAt && r.completedAt >= startOfDay && r.completedAt <= endOfDay && r.balanceDue === 0) {
+      const deliveredPaid = r.finalCost - r.advancePaid;
+      if (deliveredPaid > 0) repairIncome += deliveredPaid;
+    }
+  });
+
+  const parts = getColomboDateParts(dayTimestamp);
+  const dateDisplay = `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+
+  return {
+    dateKey,
+    dateDisplay,
+    shopId,
+    grossSales,
+    itemDiscounts,
+    billDiscounts,
+    refunds,
+    netSales,
+    invoiceCount: daySales.filter((s) => s.status === "COMPLETED").length,
+    payments,
+    repairIncome,
+    shifts: shiftSummaries,
+    sales: daySales,
+    itemsBySaleId,
+  };
+}
+
+/**
+ * Returns month daily summaries for calendar/list view in Asia/Colombo.
+ * Scoped by role if requestingUser is not Super Admin.
+ */
+export function getMonthDailySummary(
+  shopId: string,
+  year: number,
+  month: number,
+  requestingUser?: UserProfile
+): MonthDailySummaryItem[] {
+  const store = loadLocalStore();
+  const { startOfMonth, endOfMonth, daysInMonth } = getColomboMonthRange(year, month);
+
+  let monthSales = store.sales.filter(
+    (s) => s.createdAt >= startOfMonth && s.createdAt <= endOfMonth
+  );
+
+  if (shopId && shopId !== "ALL") {
+    monthSales = monthSales.filter((s) => s.shopId === shopId);
+  }
+
+  if (requestingUser && requestingUser.role !== "SUPER_ADMIN") {
+    monthSales = monthSales.filter((s) => s.cashierId === requestingUser.uid);
+  }
+
+  // Bucketing by day of month (1 to daysInMonth)
+  const summaries: MonthDailySummaryItem[] = [];
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateKey = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const dateObj = new Date(Date.UTC(year, month - 1, d, 12, 0, 0));
+    const dayOfWeek = dayNames[dateObj.getUTCDay()];
+
+    summaries.push({
+      day: d,
+      dateKey,
+      dayOfWeek,
+      invoiceCount: 0,
+      netSales: 0,
+      hasSales: false,
+    });
+  }
+
+  monthSales.forEach((sale) => {
+    const parts = getColomboDateParts(sale.createdAt);
+    if (parts.year === year && parts.month === month && parts.day >= 1 && parts.day <= daysInMonth) {
+      const idx = parts.day - 1;
+      summaries[idx].invoiceCount += 1;
+      summaries[idx].netSales += sale.total || 0;
+      summaries[idx].hasSales = true;
+    }
+  });
+
+  return summaries;
+}
+
+/**
+ * Returns Day-End Status data strictly for Super Admin.
+ * Throws UNAUTHORIZED if called by other roles.
+ */
+export function getDayEndStatusData(
+  shopId: string,
+  dayTimestamp: number,
+  requestingUser: UserProfile
+): DayEndStatusData {
+  if (!requestingUser || requestingUser.role !== "SUPER_ADMIN") {
+    throw new Error(ERROR_MESSAGES.PERMISSION_DENIED);
+  }
+
+  const store = loadLocalStore();
+  const { startOfDay, endOfDay, dateKey } = getColomboDayRange(dayTimestamp);
+
+  let daySales = store.sales.filter(
+    (s) => s.createdAt >= startOfDay && s.createdAt <= endOfDay
+  );
+
+  if (shopId && shopId !== "ALL") {
+    daySales = daySales.filter((s) => s.shopId === shopId);
+  }
+
+  let completedInvoices = 0;
+  let partiallyReturnedInvoices = 0;
+  let fullyReturnedInvoices = 0;
+  let cancelledInvoices = 0;
+  let grossSales = 0;
+  let refunds = 0;
+  let netSales = 0;
+  const payments = { cash: 0, card: 0, bankTransfer: 0 };
+
+  daySales.forEach((sale) => {
+    if (sale.status === "COMPLETED") {
+      if (sale.returnStatus === "PARTIALLY_RETURNED") partiallyReturnedInvoices++;
+      else if (sale.returnStatus === "FULLY_RETURNED") fullyReturnedInvoices++;
+      else completedInvoices++;
+    } else if (sale.status === "CANCELLED") {
+      cancelledInvoices++;
+    }
+
+    grossSales += sale.subtotal || 0;
+    refunds += sale.returnedAmount || 0;
+    netSales += sale.total || 0;
+
+    if (sale.payments && sale.payments.length > 0) {
+      sale.payments.forEach((p) => {
+        if (p.method === "CASH") payments.cash += p.amount;
+        else if (p.method === "CARD") payments.card += p.amount;
+        else if (p.method === "BANK_TRANSFER") payments.bankTransfer += p.amount;
+      });
+    }
+  });
+
+  // Repair income for day
+  let repairIncome = 0;
+  store.repairs.forEach((r) => {
+    const matchesShop = shopId === "ALL" || r.shopId === shopId;
+    if (!matchesShop) return;
+    if (r.receivedAt >= startOfDay && r.receivedAt <= endOfDay && r.advancePaid > 0) {
+      repairIncome += r.advancePaid;
+    }
+    if (r.completedAt && r.completedAt >= startOfDay && r.completedAt <= endOfDay && r.balanceDue === 0) {
+      const deliveredPaid = r.finalCost - r.advancePaid;
+      if (deliveredPaid > 0) repairIncome += deliveredPaid;
+    }
+  });
+
+  // Sequence integrity check
+  const sortedSales = [...daySales].sort((a, b) =>
+    a.invoiceNumber.localeCompare(b.invoiceNumber, undefined, { numeric: true })
+  );
+  const firstInvoiceNumber = sortedSales.length > 0 ? sortedSales[0].invoiceNumber : null;
+  const lastInvoiceNumber = sortedSales.length > 0 ? sortedSales[sortedSales.length - 1].invoiceNumber : null;
+
+  const missingInvoices: string[] = [];
+  const parsedSeq = sortedSales
+    .map((s) => {
+      const match = s.invoiceNumber.match(/(\d+)$/);
+      return match
+        ? {
+            num: parseInt(match[1], 10),
+            raw: s.invoiceNumber,
+            prefix: s.invoiceNumber.slice(0, match.index),
+            digits: match[1].length,
+          }
+        : null;
+    })
+    .filter(Boolean);
+
+  if (parsedSeq.length > 1) {
+    for (let i = 0; i < parsedSeq.length - 1; i++) {
+      const curr = parsedSeq[i]!;
+      const next = parsedSeq[i + 1]!;
+      if (curr.prefix === next.prefix && next.num > curr.num + 1) {
+        for (let gap = curr.num + 1; gap < next.num; gap++) {
+          missingInvoices.push(`${curr.prefix}${String(gap).padStart(curr.digits, "0")}`);
+        }
+      }
+    }
+  }
+
+  // Shift reconciliation
+  const dayShifts = store.shifts.filter((sh) => {
+    const matchesShop = shopId === "ALL" || sh.shopId === shopId;
+    const matchesTime =
+      sh.openedAt <= endOfDay && (!sh.closedAt || sh.closedAt >= startOfDay);
+    return matchesShop && matchesTime;
+  });
+
+  let totalExpectedDrawerCash = 0;
+  let totalActualCountedCash = 0;
+  let totalVariance = 0;
+  let allShiftsClosed = dayShifts.length > 0;
+  let shiftSalesSum = 0;
+
+  const shiftSummaries = dayShifts.map((sh) => {
+    const expected = computeExpectedDrawerCash(sh);
+    const isOpen = sh.status === "OPEN";
+    if (isOpen) allShiftsClosed = false;
+
+    totalExpectedDrawerCash += expected;
+    if (sh.actualCashCounted !== undefined) {
+      totalActualCountedCash += sh.actualCashCounted;
+    }
+    if (sh.variance !== undefined) {
+      totalVariance += sh.variance;
+    }
+    shiftSalesSum += sh.cashSales || 0;
+
+    return {
+      id: sh.id,
+      cashierName: sh.cashierNameCache || "Cashier",
+      cashierId: sh.cashierId,
+      status: sh.status,
+      openedAt: sh.openedAt,
+      closedAt: sh.closedAt || undefined,
+      openingFloat: sh.openingFloat,
+      cashSales: sh.cashSales || 0,
+      repairCashIn: sh.repairCashIn || 0,
+      cashRefunds: sh.cashRefunds || 0,
+      cashDrops: sh.cashPayouts || 0,
+      expectedCash: expected,
+      closingCountedCash: sh.actualCashCounted,
+      variance: sh.variance,
+      isOpen,
+    };
+  });
+
+  const salesReconciliationMismatch =
+    Math.abs(shiftSalesSum - payments.cash) > 0.01;
+
+  return {
+    dateKey,
+    shopId,
+    totalInvoices: daySales.length,
+    completedInvoices,
+    partiallyReturnedInvoices,
+    fullyReturnedInvoices,
+    cancelledInvoices,
+    grossSales,
+    refunds,
+    netSales,
+    payments,
+    repairIncome,
+    firstInvoiceNumber,
+    lastInvoiceNumber,
+    missingInvoices,
+    shifts: shiftSummaries,
+    totalExpectedDrawerCash,
+    totalActualCountedCash,
+    totalVariance,
+    allShiftsClosed,
+    shiftSalesSum,
+    salesReconciliationMismatch,
+    sales: sortedSales,
+  };
 }

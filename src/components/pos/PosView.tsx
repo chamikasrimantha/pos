@@ -11,6 +11,8 @@ import {
 import { formatCurrency, renderSaleReceiptHTML } from "@/lib/receipt-generator";
 import { ProductVariant, PaymentEntry, PaymentMethod } from "@/types";
 import { CameraScannerModal } from "@/components/common/CameraScannerModal";
+import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
+import { playScanSuccessBeep, playScanErrorBeep } from "@/lib/audio-feedback";
 import {
   Barcode,
   Search,
@@ -28,6 +30,8 @@ import {
   Phone,
   Camera,
   ChevronRight,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 
 interface CartItem {
@@ -70,6 +74,52 @@ export function PosView() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+
+  // Unified barcode processor with shift check, stock validation, and sound feedback
+  const processBarcode = (rawCode: string) => {
+    if (!activeShift) {
+      showToast("Open a shift to start selling.", "error");
+      playScanErrorBeep();
+      return;
+    }
+
+    const trimmed = rawCode.trim();
+    if (!trimmed) return;
+
+    const found = variants.find(
+      (v) =>
+        v.barcode.toLowerCase() === trimmed.toLowerCase() ||
+        v.sku.toLowerCase() === trimmed.toLowerCase()
+    );
+
+    if (!found) {
+      showToast(`No shoe variant matched barcode: ${trimmed}`, "error");
+      playScanErrorBeep();
+      setBarcodeInput("");
+      return;
+    }
+
+    addToCart(found);
+    setBarcodeInput("");
+  };
+
+  // Mount global barcode scanner (window burst listener)
+  const { isMuted, toggleMute } = useBarcodeScanner(
+    (scannedCode) => {
+      processBarcode(scannedCode);
+    },
+    { targetInputId: "pos-barcode-input" }
+  );
+
+  // Auto refocus barcode input after modal dismissal or category change
+  useEffect(() => {
+    if (!isPaymentModalOpen && !isCameraScannerOpen) {
+      const timer = setTimeout(() => {
+        barcodeInputRef.current?.focus();
+      }, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [isPaymentModalOpen, isCameraScannerOpen, selectedCategory]);
 
   // Load variants and active shop inventory
   const variants = useMemo(() => getVariants(), [dataVersion]);
@@ -129,33 +179,31 @@ export function PosView() {
     return Math.max(0, cartSubtotal - billDiscount);
   }, [cartSubtotal, billDiscount]);
 
-  // Handle barcode quick scan (Enter press)
+  // Handle barcode quick scan (Enter press on input)
   const handleBarcodeScan = (e: React.FormEvent) => {
     e.preventDefault();
     if (!barcodeInput.trim()) return;
-
-    const code = barcodeInput.trim();
-    const found = variants.find((v) => v.barcode === code || v.sku.toLowerCase() === code.toLowerCase());
-
-    if (!found) {
-      showToast(`No shoe variant matched barcode: ${code}`, "error");
-      setBarcodeInput("");
-      return;
-    }
-
-    addToCart(found);
-    setBarcodeInput("");
+    processBarcode(barcodeInput);
   };
 
   const addToCart = (variant: ProductVariant) => {
+    if (!activeShift) {
+      showToast("Open a shift to start selling.", "error");
+      playScanErrorBeep();
+      return;
+    }
+
     const onHand = stockMap[variant.id] || 0;
     const existing = cart.find((i) => i.variant.id === variant.id);
     const existingQty = existing ? existing.quantity : 0;
 
     if (existingQty + 1 > onHand) {
       showToast(`Stock limit reached for ${variant.productNameCache}. (Available: ${onHand})`, "error");
+      playScanErrorBeep();
       return;
     }
+
+    playScanSuccessBeep();
 
     if (existing) {
       setCart((prev) =>
@@ -185,6 +233,10 @@ export function PosView() {
     setLastAddedVariantId(variant.id);
     setTimeout(() => setLastAddedVariantId(null), 350);
     showToast(`Added ${variant.productNameCache} (${variant.sizeLabelCache}) to cart`, "success");
+
+    setTimeout(() => {
+      barcodeInputRef.current?.focus();
+    }, 50);
   };
 
   const updateQuantity = (variantId: string, delta: number) => {
@@ -360,6 +412,7 @@ export function PosView() {
           >
             <Barcode size={18} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
             <input
+              id="pos-barcode-input"
               ref={barcodeInputRef}
               type="text"
               placeholder="Scan barcode or enter SKU"
@@ -383,6 +436,23 @@ export function PosView() {
               disabled={!activeShift}
             >
               Scan
+            </button>
+            <button
+              type="button"
+              onClick={toggleMute}
+              title={isMuted ? "Unmute scanner sound" : "Mute scanner sound"}
+              className="btn btn-secondary btn-sm"
+              style={{
+                flexShrink: 0,
+                height: "32px",
+                padding: "0 8px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: isMuted ? "var(--ink-4)" : "var(--primary)",
+              }}
+            >
+              {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
             </button>
             <button
               type="button"
@@ -1035,6 +1105,19 @@ export function PosView() {
           </div>
         </div>
       )}
+
+      {/* Camera Barcode Scanner Modal */}
+      <CameraScannerModal
+        isOpen={isCameraScannerOpen}
+        onClose={() => {
+          setIsCameraScannerOpen(false);
+          setTimeout(() => barcodeInputRef.current?.focus(), 60);
+        }}
+        onScan={(scannedCode) => {
+          processBarcode(scannedCode);
+        }}
+        title="Scan Footwear Barcode"
+      />
     </div>
   );
 }

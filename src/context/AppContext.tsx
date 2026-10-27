@@ -98,7 +98,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const openPrintModal = useCallback((title: string, htmlContent: string) => {
+  const openPrintModal = useCallback((arg1: string, arg2: string) => {
+    let title = arg1;
+    let htmlContent = arg2;
+    if (arg1 && arg1.trim().startsWith("<") && (!arg2 || !arg2.trim().startsWith("<"))) {
+      title = arg2 || "Print Document";
+      htmlContent = arg1;
+    }
     setPrintModal({
       isOpen: true,
       title,

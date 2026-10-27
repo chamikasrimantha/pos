@@ -11,17 +11,27 @@ export function PrintModal() {
 
   if (!printModal.isOpen) return null;
 
+  const isA4 =
+    printModal.htmlContent.includes("210mm") ||
+    printModal.htmlContent.includes("AUDIT REPORT") ||
+    printModal.htmlContent.includes("STATUS AUDIT");
+
   const handlePrint = () => {
     if (!printRef.current) return;
-    const printWindow = window.open("", "_blank", "width=480,height=640");
+    const printWindow = window.open(
+      "",
+      "_blank",
+      isA4 ? "width=900,height=960" : "width=480,height=640"
+    );
     if (printWindow) {
       printWindow.document.write(`
+        <!DOCTYPE html>
         <html>
           <head>
             <title>${printModal.title}</title>
             <style>
-              @page { margin: 0; size: auto; }
-              body { margin: 10px; font-family: monospace; }
+              @page { margin: 8mm; size: ${isA4 ? "A4 portrait" : "auto"}; }
+              body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #fff; }
             </style>
           </head>
           <body>
@@ -44,8 +54,9 @@ export function PrintModal() {
       <div
         className="modal-panel animate-fade-in"
         style={{
-          maxWidth: "540px",
-          maxHeight: "90vh",
+          maxWidth: isA4 ? "960px" : "540px",
+          width: "100%",
+          maxHeight: "92vh",
           display: "flex",
           flexDirection: "column",
           padding: 0,
@@ -97,9 +108,10 @@ export function PrintModal() {
               boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
               border: "1px solid var(--line)",
               borderRadius: "4px",
-              padding: "16px",
-              minWidth: "320px",
-              maxWidth: "360px",
+              padding: isA4 ? "24px" : "16px",
+              minWidth: isA4 ? "600px" : "320px",
+              maxWidth: isA4 ? "100%" : "380px",
+              width: isA4 ? "100%" : "auto",
             }}
             dangerouslySetInnerHTML={{ __html: printModal.htmlContent }}
           />

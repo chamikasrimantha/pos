@@ -1,7 +1,7 @@
 // src/components/returns/ReturnsDesk.tsx
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import {
   findSaleByInvoice,
@@ -59,14 +59,13 @@ export function ReturnsDesk() {
 
   const allVariants = useMemo(() => getVariants(), [dataVersion]);
 
-  // Lookup Sale by Invoice
-  const handleLookup = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchInvoiceNumber.trim()) return;
+  const performLookup = (invoiceNum: string) => {
+    const trimmed = invoiceNum.trim();
+    if (!trimmed) return;
 
-    const res = findSaleByInvoice(searchInvoiceNumber.trim());
+    const res = findSaleByInvoice(trimmed, currentUser || undefined);
     if (!res) {
-      showToast(`No completed sale found matching invoice: ${searchInvoiceNumber}`, "error");
+      showToast(`No completed sale found matching invoice: ${trimmed}`, "error");
       return;
     }
 
@@ -86,6 +85,24 @@ export function ReturnsDesk() {
     });
     setReturnConfig(config);
     showToast(`Loaded invoice #${res.sale.invoiceNumber}`, "success");
+  };
+
+  // Check for prefilled invoice from Invoices list
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const prefill = sessionStorage.getItem("pos_return_invoice");
+      if (prefill) {
+        sessionStorage.removeItem("pos_return_invoice");
+        setSearchInvoiceNumber(prefill);
+        performLookup(prefill);
+      }
+    }
+  }, []);
+
+  // Lookup Sale by Invoice Form submit
+  const handleLookup = (e: React.FormEvent) => {
+    e.preventDefault();
+    performLookup(searchInvoiceNumber);
   };
 
   // Calculate gross refund value

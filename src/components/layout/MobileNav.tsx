@@ -19,6 +19,8 @@ import {
   Tag,
   ShieldCheck,
   ClipboardList,
+  Receipt,
+  CalendarCheck,
 } from "lucide-react";
 
 export function MobileNav() {
@@ -61,10 +63,14 @@ export function MobileNav() {
   // Secondary items in the "More" drawer sheet
   const getSecondaryItems = () => {
     if (role === "CASHIER") {
-      return [];
+      return [
+        { id: "invoices", label: "My Invoices", icon: Receipt },
+        { id: "reports", label: "My Daily Sales", icon: BarChart3 },
+      ];
     }
     if (role === "SHOP_MANAGER") {
       return [
+        { id: "invoices", label: "My Invoices", icon: Receipt },
         { id: "shifts", label: "Cash Drawer & Shifts", icon: Coins },
         { id: "returns", label: "Returns & Exchanges", icon: RotateCcw },
         { id: "repairs", label: "Shoe Repair Desk", icon: Wrench },
@@ -74,6 +80,8 @@ export function MobileNav() {
     }
     // SUPER_ADMIN
     return [
+      { id: "invoices", label: "All Invoices", icon: Receipt },
+      { id: "dayEndStatus", label: "Day-end Status", icon: CalendarCheck },
       { id: "shifts", label: "Cash Drawer & Shifts", icon: Coins },
       { id: "returns", label: "Returns & Exchanges", icon: RotateCcw },
       { id: "repairs", label: "Shoe Repair Desk", icon: Wrench },
