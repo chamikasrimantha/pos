@@ -480,53 +480,132 @@ export function renderTransferDispatchNoteHTML(
   `;
 }
 
-// ── 6. THERMAL BARCODE LABELS (50x30mm vector thermal sticker) ───────────────
-export function renderThermalBarcodeLabelHTML(
+// ── 6. THERMAL BARCODE LABELS (50x30mm vector thermal sticker & A4 Sheet) ───────
+export function renderSingleThermalBarcodeLabel(
   variant: ProductVariant,
-  copies: number = 1
+  outletName: string = "APEX FOOTWEAR"
 ): string {
-  const isEan13 = variant.barcode.length === 13 && /^\d+$/.test(variant.barcode);
   const barcodeSVG = generateBarcodeSVG(variant.barcode, {
-    format: isEan13 ? "EAN13" : "CODE128",
-    height: 30,
-    width: 1.6,
+    height: 28,
+    width: 1.5,
     displayValue: false,
-    margin: 1,
+    margin: 0,
   });
 
-  const singleLabel = `
-    <div style="width: 50mm; height: 30mm; border: 1px solid #000; padding: 2mm 2.5mm; box-sizing: border-box; text-align: center; background: #fff; page-break-after: always; display: flex; flex-direction: column; justify-content: space-between; margin: 4px auto;">
-      <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #000; padding-bottom: 1px;">
-        <span style="font-size: 8pt; font-weight: 900; text-transform: uppercase;">${variant.brandNameCache}</span>
-        <span style="font-size: 10pt; font-weight: 900;">${formatCurrency(variant.sellingPrice)}</span>
+  return `
+    <div class="thermal-barcode-label-item" style="width: 50mm; height: 30mm; max-width: 50mm; max-height: 30mm; border: 1px solid #111; padding: 1.8mm 2.2mm; box-sizing: border-box; background: #fff; page-break-after: always; break-after: page; display: flex; flex-direction: column; justify-content: space-between; margin: 0 auto; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      <!-- Store Header & Brand -->
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #111; padding-bottom: 1.5px; line-height: 1;">
+        <span style="font-size: 6.5pt; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: #111;">${outletName}</span>
+        <span style="font-size: 7.5pt; font-weight: 900; text-transform: uppercase; color: #000;">${variant.brandNameCache || "BRAND"}</span>
       </div>
-      
-      <div style="font-size: 7.5pt; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;">
+
+      <!-- Product Name -->
+      <div style="font-size: 7pt; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; color: #000; text-align: left; line-height: 1.1;">
         ${variant.productNameCache}
       </div>
 
-      <div style="display: flex; justify-content: space-between; font-size: 7pt; font-weight: 600; color: #222;">
-        <span>${variant.colorNameCache}</span>
-        <span style="font-weight: 900; font-size: 8.5pt;">SIZE: ${variant.sizeLabelCache}</span>
+      <!-- Attributes: Color & Size -->
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 6.5pt; margin-top: 1px; line-height: 1.1;">
+        <span style="color: #222; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;">
+          COL: <strong>${variant.colorNameCache}</strong>
+        </span>
+        <span style="font-weight: 900; font-size: 7.5pt; background: #000; color: #fff; padding: 1px 4px; border-radius: 2px; white-space: nowrap;">
+          SIZE: ${variant.sizeLabelCache}
+        </span>
       </div>
 
-      <div style="margin: 0 auto; line-height: 1; text-align: center;">
-        <div style="display: flex; justify-content: center; align-items: center; max-height: 32px; overflow: hidden;">
+      <!-- Price -->
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 1px; line-height: 1.1;">
+        <span style="font-size: 5.5pt; font-weight: 700; color: #444; text-transform: uppercase;">MRP (INCL. TAXES)</span>
+        <span style="font-size: 9pt; font-weight: 900; color: #000; letter-spacing: -0.3px;">${formatCurrency(variant.sellingPrice)}</span>
+      </div>
+
+      <!-- Vector Barcode & Digits -->
+      <div style="text-align: center; margin: 0 auto; width: 100%; line-height: 1;">
+        <div style="display: flex; justify-content: center; align-items: center; max-height: 28px; width: 100%; overflow: hidden;">
           ${barcodeSVG}
         </div>
-        <div style="font-family: monospace; font-size: 8pt; font-weight: 800; letter-spacing: 1.5px; margin-top: 1px; color: #000;">
-          ${variant.barcode}
-        </div>
-        <div style="font-size: 6pt; font-weight: 600; color: #444; letter-spacing: 0.5px;">
-          SKU: ${variant.sku}
+        <div style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-size: 6.5pt; font-weight: 800; margin-top: 1px; color: #000;">
+          <span>SKU: ${variant.sku}</span>
+          <span style="letter-spacing: 1px;">${variant.barcode}</span>
         </div>
       </div>
     </div>
   `;
+}
+
+export function renderThermalBarcodeLabelHTML(
+  variant: ProductVariant,
+  copies: number = 1,
+  outletName: string = "APEX FOOTWEAR"
+): string {
+  const singleLabel = renderSingleThermalBarcodeLabel(variant, outletName);
+  return `
+    <div class="thermal-barcode-label-container" style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+      ${Array.from({ length: copies }).map(() => singleLabel).join("")}
+    </div>
+  `;
+}
+
+export function renderBatchThermalBarcodeLabelsHTML(
+  items: { variant: ProductVariant; copies: number }[],
+  outletName: string = "APEX FOOTWEAR"
+): string {
+  const labelHTMLs: string[] = [];
+  items.forEach((item) => {
+    const single = renderSingleThermalBarcodeLabel(item.variant, outletName);
+    for (let i = 0; i < item.copies; i++) {
+      labelHTMLs.push(single);
+    }
+  });
 
   return `
-    <div style="font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center;">
-      ${Array.from({ length: copies }).map(() => singleLabel).join("")}
+    <div class="thermal-barcode-label-container" style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+      ${labelHTMLs.join("")}
+    </div>
+  `;
+}
+
+export function renderA4BarcodeSheetHTML(
+  items: { variant: ProductVariant; copies: number }[],
+  outletName: string = "APEX FOOTWEAR"
+): string {
+  const flattenedLabels: string[] = [];
+  items.forEach((item) => {
+    const single = renderSingleThermalBarcodeLabel(item.variant, outletName);
+    for (let i = 0; i < item.copies; i++) {
+      flattenedLabels.push(single);
+    }
+  });
+
+  // Split into pages of 24 (3 columns x 8 rows)
+  const pageSize = 24;
+  const pages: string[][] = [];
+  for (let i = 0; i < flattenedLabels.length; i += pageSize) {
+    pages.push(flattenedLabels.slice(i, i + pageSize));
+  }
+
+  return `
+    <div class="a4-label-sheet-wrapper" style="font-family: Arial, sans-serif;">
+      ${pages
+        .map(
+          (pageLabels, idx) => `
+        <div class="a4-label-sheet-page" style="width: 210mm; min-height: 297mm; padding: 8mm 6mm; box-sizing: border-box; page-break-after: ${
+          idx === pages.length - 1 ? "auto" : "always"
+        }; break-after: ${
+            idx === pages.length - 1 ? "auto" : "page"
+          }; background: #fff; margin: 0 auto;">
+          <div style="font-size: 8pt; color: #666; text-align: right; margin-bottom: 4mm;">
+            Page ${idx + 1} of ${pages.length} &bull; ${pageLabels.length} Labels &bull; ${outletName}
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; justify-items: center;">
+            ${pageLabels.join("")}
+          </div>
+        </div>
+      `
+        )
+        .join("")}
     </div>
   `;
 }

@@ -11,35 +11,69 @@ export function PrintModal() {
 
   if (!printModal.isOpen) return null;
 
+  const isThermalLabel =
+    printModal.htmlContent.includes("thermal-barcode-label") ||
+    printModal.title.toLowerCase().includes("barcode label");
+
+  const isA4Sheet = printModal.htmlContent.includes("a4-label-sheet");
+
   const isA4 =
-    printModal.htmlContent.includes("210mm") ||
-    printModal.htmlContent.includes("AUDIT REPORT") ||
-    printModal.htmlContent.includes("STATUS AUDIT");
+    !isThermalLabel &&
+    (isA4Sheet ||
+      printModal.htmlContent.includes("210mm") ||
+      printModal.htmlContent.includes("AUDIT REPORT") ||
+      printModal.htmlContent.includes("STATUS AUDIT") ||
+      printModal.title.toLowerCase().includes("a4"));
 
   const handlePrint = () => {
     if (!printRef.current) return;
     const printWindow = window.open(
       "",
       "_blank",
-      isA4 ? "width=900,height=960" : "width=480,height=640"
+      isA4 ? "width=900,height=960" : isThermalLabel ? "width=420,height=520" : "width=480,height=640"
     );
     if (printWindow) {
+      let pageCss = "@page { margin: 8mm; size: A4 portrait; }";
+      if (isThermalLabel) {
+        pageCss = `
+          @page { size: 50mm 30mm; margin: 0; }
+          html, body { margin: 0; padding: 0; width: 50mm; height: 30mm; background: #fff; }
+          .thermal-barcode-label-container { gap: 0 !important; }
+          .thermal-barcode-label-item { width: 50mm !important; height: 30mm !important; margin: 0 !important; page-break-after: always !important; break-after: page !important; }
+        `;
+      } else if (isA4Sheet) {
+        pageCss = `
+          @page { size: A4 portrait; margin: 6mm; }
+          html, body { margin: 0; padding: 0; background: #fff; }
+          .a4-label-sheet-page { page-break-after: always !important; break-after: page !important; }
+        `;
+      } else if (!isA4) {
+        // Standard 80mm Counter Thermal Roll
+        pageCss = `
+          @page { size: 80mm auto; margin: 0; }
+          html, body { margin: 0; padding: 0; background: #fff; }
+        `;
+      }
+
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
           <head>
             <title>${printModal.title}</title>
             <style>
-              @page { margin: 8mm; size: ${isA4 ? "A4 portrait" : "auto"}; }
-              body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #fff; }
+              * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              ${pageCss}
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #fff; }
             </style>
           </head>
           <body>
             ${printModal.htmlContent}
             <script>
               window.onload = function() {
-                window.print();
-                window.onafterprint = function() { window.close(); };
+                setTimeout(function() {
+                  window.print();
+                  window.onafterprint = function() { window.close(); };
+                }, 100);
               };
             </script>
           </body>

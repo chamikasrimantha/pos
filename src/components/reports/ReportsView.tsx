@@ -111,9 +111,19 @@ export function ReportsView() {
   };
 
   return (
-    <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div
+      className="page-responsive-container"
+      style={{
+        padding: "20px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "20px",
+        minHeight: "100%",
+        paddingBottom: "90px",
+      }}
+    >
       {/* Top Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexShrink: 0 }}>
         <div>
           <h2 style={{ fontSize: "22px", fontWeight: "600", color: "var(--ink)" }}>
             Analytics & reports
@@ -129,7 +139,7 @@ export function ReportsView() {
       </div>
 
       {/* KPI TILES */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "14px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "14px", flexShrink: 0 }}>
         {/* Net Sales */}
         <div
           style={{
@@ -237,7 +247,7 @@ export function ReportsView() {
       </div>
 
       {/* Tabs */}
-      <div className="seg-control" style={{ width: "fit-content" }}>
+      <div className="seg-control" style={{ width: "fit-content", maxWidth: "100%", overflowX: "auto", scrollbarWidth: "none", flexShrink: 0 }}>
         <button
           className={reportType === "DAILY_SALES" ? "active" : ""}
           onClick={() => setReportType("DAILY_SALES")}

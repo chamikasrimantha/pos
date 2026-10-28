@@ -39,10 +39,11 @@
   /* Shadow — only for floating layers */
   --shadow-float:      0 8px 24px rgba(16, 24, 40, 0.12);
 
-  /* Radii */
-  --radius-control:    8px;
-  --radius-tile:       12px;
-  --radius-modal:      16px;
+  /* Radii - Modern rounded aesthetic */
+  --radius-control:    12px;
+  --radius-tile:       16px;
+  --radius-modal:      20px;
+  --radius-pill:       9999px;
 
   /* Motion */
   --motion-hover:      140ms ease-out;
@@ -233,12 +234,13 @@ html, body {
   align-items: center;
   gap: 5px;
   height: 28px;
-  padding: 0 10px;
-  border-radius: var(--radius-control);
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  letter-spacing: 0.2px;
 }
 
 /* Semantic variants */
@@ -263,16 +265,16 @@ html, body {
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-control);
-  padding: 0 12px;
+  padding: 0 14px;
   color: var(--ink);
   font-size: 15px;
   font-family: inherit;
   outline: none;
-  transition: border-color var(--motion-hover), box-shadow var(--motion-hover);
+  transition: border-color var(--motion-hover), box-shadow var(--motion-hover), background-color var(--motion-hover);
 }
 .input-field:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px var(--primary-soft);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 .input-field::placeholder { color: var(--ink-3); }
 .input-field.error { border-color: var(--danger); }
@@ -292,23 +294,38 @@ html, body {
   background: var(--surface-sunken);
   color: var(--ink-2);
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
   text-align: left;
-  padding: 0 16px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  letter-spacing: 0.2px;
 }
 .pos-table td {
   height: 52px;
-  padding: 0 16px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--line);
   color: var(--ink);
   vertical-align: middle;
+  white-space: nowrap;
+}
+.pos-table td.wrap-cell {
+  white-space: normal;
 }
 .pos-table tr:hover td { background: var(--canvas); }
 .pos-table td.num,
 .pos-table th.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+.pos-table input[type="checkbox"] {
+  width: 17px !important;
+  height: 17px !important;
+  min-height: 17px !important;
+  border-radius: 4px !important;
+  accent-color: var(--primary);
+  cursor: pointer;
+  vertical-align: middle;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -333,33 +350,41 @@ html, body {
 .seg-control {
   display: flex;
   background: var(--surface-sunken);
-  border-radius: var(--radius-control);
-  padding: 3px;
-  gap: 2px;
+  border-radius: var(--radius-pill);
+  padding: 4px;
+  gap: 4px;
+  min-height: 48px;
   height: 48px;
   align-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  box-sizing: border-box;
 }
 .seg-control button {
-  flex: 1;
-  height: 42px;
+  flex: 0 0 auto;
+  height: 38px;
   border: 1px solid transparent;
   background: transparent;
-  border-radius: 6px;
-  font-size: 15px;
-  font-weight: 500;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 600;
   color: var(--ink-2);
   cursor: pointer;
-  transition: background var(--motion-hover), color var(--motion-hover);
+  transition: all var(--motion-hover);
   font-family: inherit;
-  padding: 0 12px;
+  padding: 0 16px;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .seg-control button.active {
   background: var(--surface);
-  color: var(--ink);
-  font-weight: 600;
+  color: var(--primary);
+  font-weight: 700;
   border-color: var(--line-strong);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  box-shadow: 0 2px 6px rgba(16, 24, 40, 0.08);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -507,18 +532,39 @@ html, body {
   .mobile-nav-bar {
     display: flex !important;
   }
+  .app-main-viewport,
   .app-main-content {
-    padding-bottom: 72px !important;
+    padding-bottom: 84px !important;
   }
-  .input-field, input, select, textarea {
+  .mobile-cart-float-bar {
+    bottom: 78px !important; /* Floats cleanly above the 64px mobile nav */
+  }
+  .desktop-only,
+  .desktop-only-table,
+  .desktop-only-grid {
+    display: none !important;
+  }
+  .mobile-only,
+  .mobile-only-cards {
+    display: flex !important;
+  }
+  .input-field,
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
     font-size: 16px !important; /* Prevents auto-zoom on iOS Safari */
     min-height: 44px;
+    border-radius: var(--radius-control);
   }
   .page-header {
     padding: 16px 16px 0 !important;
   }
   .page-content {
     padding: 12px 16px 20px !important;
+  }
+  /* Mobile padding fix for all main pages */
+  .page-responsive-container {
+    padding: 16px 14px 90px !important;
   }
 }
 
@@ -528,6 +574,19 @@ html, body {
   }
   .app-desktop-sidebar {
     display: flex !important;
+  }
+  .mobile-only,
+  .mobile-only-cards {
+    display: none !important;
+  }
+  .desktop-only-table {
+    display: block !important;
+  }
+  .desktop-only-grid {
+    display: grid !important;
+  }
+  .desktop-only {
+    display: block !important;
   }
 }
 

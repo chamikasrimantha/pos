@@ -184,7 +184,17 @@ export function AdminView() {
   }
 
   return (
-    <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div
+      className="page-responsive-container"
+      style={{
+        padding: "20px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "20px",
+        minHeight: "100%",
+        paddingBottom: "90px",
+      }}
+    >
       {/* Top Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
         <div>
@@ -199,7 +209,7 @@ export function AdminView() {
 
 
       {/* Tabs */}
-      <div className="seg-control" style={{ width: "fit-content" }}>
+      <div className="seg-control" style={{ width: "fit-content", maxWidth: "100%", overflowX: "auto", scrollbarWidth: "none", flexShrink: 0 }}>
         <button
           className={activeTab === "BRANCHES" ? "active" : ""}
           onClick={() => setActiveTab("BRANCHES")}

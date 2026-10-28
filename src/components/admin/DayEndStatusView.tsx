@@ -109,7 +109,16 @@ export function DayEndStatusView() {
   }
 
   return (
-    <div className="animate-fade-in" style={{ padding: "24px 32px", maxWidth: "1500px", margin: "0 auto" }}>
+    <div
+      className="animate-fade-in page-responsive-container"
+      style={{
+        padding: "20px 24px",
+        maxWidth: "1500px",
+        margin: "0 auto",
+        minHeight: "100%",
+        paddingBottom: "90px",
+      }}
+    >
       {/* Top Header */}
       <div
         style={{

@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>POS Hardware Procurement Guide — Sri Lanka Outlets</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 12mm 14mm 14mm 14mm;
+      @bottom-right {
+        content: counter(page);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      line-height: 1.45;
+      font-size: 11pt;
+      margin: 0;
+      padding: 0;
+    }
+
+    .header-banner {
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    .brand-title {
+      font-size: 20pt;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.5px;
+      margin: 0;
+    }
+
+    .brand-subtitle {
+      font-size: 11pt;
+      font-weight: 600;
+      color: #2563eb;
+      margin-top: 3px;
+    }
+
+    .doc-meta {
+      text-align: right;
+      font-size: 9pt;
+      color: #64748b;
+      line-height: 1.35;
+    }
+
+    .doc-badge {
+      display: inline-block;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 8.5pt;
+      margin-bottom: 4px;
+    }
+
+    h2 {
+      font-size: 13pt;
+      font-weight: 700;
+      color: #0f172a;
+      border-left: 4px solid #2563eb;
+      padding-left: 8px;
+      margin-top: 18px;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    h3 {
+      font-size: 11pt;
+      font-weight: 700;
+      color: #1e293b;
+      margin-top: 12px;
+      margin-bottom: 6px;
+    }
+
+    p {
+      margin: 0 0 8px 0;
+      font-size: 10pt;
+      color: #334155;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      margin-bottom: 14px;
+      font-size: 9.5pt;
+    }
+
+    th {
+      background: #f1f5f9;
+      color: #0f172a;
+      font-weight: 700;
+      text-align: left;
+      padding: 7px 9px;
+      border: 1px solid #cbd5e1;
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.2px;
+    }
+
+    td {
+      padding: 7px 9px;
+      border: 1px solid #e2e8f0;
+      vertical-align: top;
+      color: #334155;
+    }
+
+    tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .highlight-row td {
+      background: #f0fdf4 !important;
+      font-weight: 700;
+      color: #15803d;
+      border-top: 2px solid #86efac;
+      border-bottom: 2px solid #86efac;
+      font-size: 10.5pt;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 8pt;
+      font-weight: 700;
+    }
+
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-amber { background: #fef3c7; color: #92400e; }
+
+    .callout {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #3b82f6;
+      border-radius: 4px;
+      padding: 10px 12px;
+      margin: 10px 0 14px 0;
+      font-size: 9.5pt;
+    }
+
+    .callout-title {
+      font-weight: 700;
+      color: #1e3a8a;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .vendor-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 8px;
+      margin-bottom: 12px;
+    }
+
+    .vendor-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 5px;
+      padding: 8px 10px;
+      background: #fafafa;
+      font-size: 9pt;
+    }
+
+    .vendor-card strong {
+      display: block;
+      color: #0f172a;
+      font-size: 9.5pt;
+      margin-bottom: 3px;
+    }
+
+    .diagram-box {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: "Courier New", Courier, monospace;
+      padding: 10px 14px;
+      border-radius: 5px;
+      font-size: 8.5pt;
+      line-height: 1.35;
+      margin: 10px 0 14px 0;
+      overflow-x: hidden;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .footer-note {
+      font-size: 8pt;
+      color: #94a3b8;
+      text-align: center;
+      margin-top: 16px;
+      padding-top: 8px;
+      border-top: 1px dashed #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER BANNER -->
+  <div class="header-banner">
+    <div>
+      <div class="brand-title">POS Hardware Procurement Guide</div>
+      <div class="brand-subtitle">Physical Hardware Bill of Materials (BOM) & Setup Specification</div>
+      <div style="font-size: 9.5pt; color: #475569; margin-top: 2px;">
+        Target: <strong>RightWay Shoes</strong> (Colombo) &bull; <strong>Mega Shoes</strong> (Kandy)
+      </div>
+    </div>
+    <div class="doc-meta">
+      <span class="doc-badge">SRI LANKA RETAIL SPECIFICATION</span><br>
+      <strong>Market Location:</strong> Colombo & Kandy, Sri Lanka<br>
+      <strong>Currency:</strong> Sri Lankan Rupees (LKR)<br>
+      <strong>System:</strong> Footwear POS & Inventory Cloud Engine
+    </div>
+  </div>
+
+  <!-- EXECUTIVE SUMMARY CALLOUT -->
+  <div class="callout">
+    <div class="callout-title">Executive Overview for Store Owner / Client</div>
+    <div style="color: #334155; line-height: 1.4;">
+      This specification details the complete physical hardware required to deploy and operate the retail footwear POS system across both store branches. All recommended models are <strong>widely available in Sri Lanka</strong> with local distributor warranties, standard spare parts, and low consumable costs. The total setup investment for both outlets is approximately <strong>Rs. 301,000 LKR</strong> (Budget/Value package) to <strong>Rs. 545,000 LKR</strong> (Commercial package).
+    </div>
+  </div>
+
+  <!-- SECTION 1 -->
+  <h2>1. Equipment Breakdown Per Outlet (1 Counter Workstation)</h2>
+  <p>Each outlet requires one dedicated billing counter workstation. The itemized specifications are as follows:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 20%;">Component</th>
+        <th style="width: 28%;">Purpose in System</th>
+        <th style="width: 32%;">Recommended Models (Sri Lanka)</th>
+        <th style="width: 20%;" class="num">Estimated Price (LKR)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <strong>A. Counter PC / POS Terminal</strong><br>
+          <span class="badge badge-blue">Core Workstation</span>
+        </td>
+        <td>
+          Runs cloud POS billing, live stock lookups, Z-reports, and offline synchronization in Google Chrome/Edge.
+        </td>
+        <td>
+          &bull; <strong>Option 1 (Best Value):</strong> HP ProDesk Mini / Dell OptiPlex Micro (Core i5 6th–8th Gen, 8GB RAM, 256GB SSD) + 19.5″ LED Monitor.<br>
+          &bull; <strong>Option 2 (Sleek All-In-One):</strong> 15.6″ Touch POS Machine (Posiflex, Sunmi D2s, or Xprinter Touch).
+        </td>
+        <td class="num">
+          <strong>Opt 1:</strong> Rs. 55,000 – 68,000<br>
+          <strong>Opt 2:</strong> Rs. 110,000 – 140,000
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+          <strong>B. 80mm Thermal Receipt Printer</strong><br>
+          <span class="badge badge-green">ESC/POS Thermal</span>
+        </td>
+        <td>
+          Prints customer sales receipts, shift Z-Reports, repair intake tickets, shoe attachment tags, and courier dispatch notes.
+        </td>
+        <td>
+          &bull; <strong>Xprinter XP-Q800 / XP-N160II / XP-80T</strong> (USB + Auto-Cutter, high availability)<br>
+          &bull; <strong>Epson TM-T82X / TM-T20III</strong> (Heavy duty, official Metropolitan warranty)
+        </td>
+        <td class="num">
+          <strong>Xprinter:</strong> Rs. 16,500 – 22,000<br>
+          <strong>Epson:</strong> Rs. 48,000 – 58,000
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+          <strong>C. Barcode Label Printer</strong><br>
+          <span class="badge badge-amber">Direct Thermal</span>
+        </td>
+        <td>
+          Prints shoe box stickers and price tags in <strong>50mm &times; 30mm</strong> format with vector SVG barcodes, size, and selling price.
+        </td>
+        <td>
+          &bull; <strong>Xprinter XP-365B / XP-370B / XP-420B</strong> (203 DPI, adjustable gap sensor, direct thermal — no ink/ribbon required)<br>
+          &bull; <strong>Gprinter GP-3120TU</strong> / <strong>Rongta RP421</strong>
+        </td>
+        <td class="num">
+          <strong>Rs. 24,000 – 32,000</strong>
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+          <strong>D. Barcode Scanner</strong><br>
+          <span class="badge badge-blue">1D / 2D USB HID</span>
+        </td>
+        <td>
+          Rapid shoe box barcode scanning at checkout; transfers receiving; intake lookup.
+        </td>
+        <td>
+          &bull; <strong>Zebra DS2208</strong> (1D/2D Imager with auto-sensing stand)<br>
+          &bull; <strong>Honeywell Voyager 1250g / 1400g</strong><br>
+          &bull; <strong>Sunlux XL-6500A / Netum NT-2012</strong> (1D Laser with auto-stand)
+        </td>
+        <td class="num">
+          <strong>Sunlux/Netum:</strong> Rs. 8,500 – 11,000<br>
+          <strong>Zebra/Honeywell:</strong> Rs. 18,000 – 35,000
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+          <strong>E. Electronic Cash Drawer</strong><br>
+          <span class="badge badge-green">RJ11 Triggered</span>
+        </td>
+        <td>
+          Secure till cash storage. Automatically kicks open upon bill completion via printer pulse.
+        </td>
+        <td>
+          &bull; <strong>Maken MK-410</strong> or <strong>Standard Heavy Duty 405A Metal Cash Drawer</strong><br>
+          5 Banknote slots (fits Rs. 5000, 1000, 500, 100, 50), 8 coin cups, 3-position lock, 24V RJ11 connector.
+        </td>
+        <td class="num">
+          <strong>Rs. 12,500 – 16,500</strong>
+        </td>
+      </tr>
+
+      <tr>
+        <td>
+          <strong>F. Line-Interactive UPS</strong><br>
+          <span class="badge badge-amber">Surge & Power Protection</span>
+        </td>
+        <td>
+          Protects PC and printers against grid dropouts, lightning, and voltage fluctuations. Prevents shift data corruption.
+        </td>
+        <td>
+          &bull; <strong>Prolink PRO701SFC / PRO700 (650VA–850VA)</strong><br>
+          &bull; <strong>DCP 650VA / 1200VA</strong> with AVR (Automatic Voltage Regulation)
+        </td>
+        <td class="num">
+          <strong>Rs. 10,000 – 14,000</strong>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION 2 -->
+  <h2>2. Consumables & Paper Rolls (First Month Supply)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 25%;">Consumable Item</th>
+        <th style="width: 35%;">Specification & Standard</th>
+        <th style="width: 22%;">Where it Fits</th>
+        <th style="width: 18%;" class="num">Approx. Unit Price (LKR)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Thermal Receipt Rolls</strong></td>
+        <td><strong>80mm &times; 80mm</strong> (or 80mm &times; 70mm) High-grade thermal paper, BPA free</td>
+        <td>80mm receipt printer</td>
+        <td class="num">Rs. 250 – 320 / roll<br><span style="font-size: 8pt; color: #64748b;">(Box of 50 = ~Rs. 13,000)</span></td>
+      </tr>
+      <tr>
+        <td><strong>Thermal Barcode Stickers</strong></td>
+        <td><strong>50mm &times; 30mm</strong> Direct Thermal Self-Adhesive Rolls (~1,000 stickers/roll, 2mm gap)</td>
+        <td>Footwear boxes & shoe tags</td>
+        <td class="num">Rs. 650 – 850 / roll<br><span style="font-size: 8pt; color: #64748b;">(10 rolls = ~Rs. 7,500)</span></td>
+      </tr>
+      <tr>
+        <td><strong>A4 Sticker Paper Sheets</strong> <em>(Optional)</em></td>
+        <td>24 labels/sheet standard A4 self-adhesive sheets</td>
+        <td>Backup sheets for office printing</td>
+        <td class="num">Rs. 45 – 60 / sheet</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="page-break"></div>
+
+  <!-- SECTION 3: TOTAL BOM FOR BOTH OUTLETS -->
+  <h2>3. Total Bill of Materials (BOM) — 2 Outlets (Colombo & Kandy)</h2>
+  <p>The table below summarizes the recommended setup combining high performance, rugged retail durability, and cost efficiency:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 42%;">Item Description</th>
+        <th style="width: 14%; text-align: center;">Qty (2 Stores)</th>
+        <th style="width: 22%;" class="num">Estimated Unit Cost</th>
+        <th style="width: 22%;" class="num">Total Cost (LKR)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>HP / Dell Mini PC</strong> (Intel Core i5, 8GB RAM, 256GB SSD) + 19.5″ LED Monitor</td>
+        <td style="text-align: center;">2 Sets</td>
+        <td class="num">Rs. 62,000</td>
+        <td class="num">Rs. 124,000</td>
+      </tr>
+      <tr>
+        <td><strong>Xprinter XP-Q800 / XP-N160II</strong> 80mm Thermal Receipt Printer + Auto-Cutter</td>
+        <td style="text-align: center;">2 Units</td>
+        <td class="num">Rs. 19,500</td>
+        <td class="num">Rs. 39,000</td>
+      </tr>
+      <tr>
+        <td><strong>Xprinter XP-365B / XP-370B</strong> 50&times;30mm Thermal Barcode Label Printer</td>
+        <td style="text-align: center;">2 Units</td>
+        <td class="num">Rs. 26,500</td>
+        <td class="num">Rs. 53,000</td>
+      </tr>
+      <tr>
+        <td><strong>Sunlux / Netum 1D/2D Barcode Scanner</strong> with Hands-Free Auto-Sensing Stand</td>
+        <td style="text-align: center;">2 Units</td>
+        <td class="num">Rs. 9,500</td>
+        <td class="num">Rs. 19,000</td>
+      </tr>
+      <tr>
+        <td><strong>Maken MK-410 Heavy Duty RJ11 Electronic Cash Drawer</strong> (5 Note / 8 Coin)</td>
+        <td style="text-align: center;">2 Units</td>
+        <td class="num">Rs. 13,500</td>
+        <td class="num">Rs. 27,000</td>
+      </tr>
+      <tr>
+        <td><strong>Prolink PRO701SFC / DCP 850VA</strong> Line-Interactive UPS with AVR</td>
+        <td style="text-align: center;">2 Units</td>
+        <td class="num">Rs. 12,500</td>
+        <td class="num">Rs. 25,000</td>
+      </tr>
+      <tr>
+        <td><strong>Startup Consumables Pack</strong> (20&times; 80mm receipt rolls + 10&times; 50x30mm label rolls)</td>
+        <td style="text-align: center;">2 Outlets</td>
+        <td class="num">Rs. 7,000</td>
+        <td class="num">Rs. 14,000</td>
+      </tr>
+      <tr class="highlight-row">
+        <td colspan="3"><strong>TOTAL ESTIMATED INVESTMENT (BOTH OUTLETS INCLUSIVE)</strong></td>
+        <td class="num"><strong>~ Rs. 301,000 LKR</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div style="font-size: 8.5pt; color: #64748b; margin-top: -6px; margin-bottom: 12px;">
+    * Note: If opting for brand-new All-in-One Touch POS Terminals (e.g. Posiflex or Sunmi) instead of Mini PCs, add approximately Rs. 100,000 – 140,000 to the total budget.
+  </div>
+
+  <!-- SECTION 4: CABLING & DIAGRAM -->
+  <h2>4. Counter Hardware Connection Diagram</h2>
+  <div class="diagram-box">
+[ POWER WALL OUTLET ] ──► [ UPS (Prolink / DCP 650VA-850VA) ]
+                               │
+               ┌───────────────┴───────────────┐ Clean Uninterrupted Power
+               ▼                               ▼
+       [ BILLING MINI PC ]            [ THERMAL PRINTERS ]
+         (Core i5, 8GB)                Receipt & Label Printers
+               │
+   ┌───────────┼───────────┐
+   │ (USB)     │ (USB)     │ (USB)
+   ▼           ▼           ▼
+[SCANNER]   [80mm BILL]  [50x30mm LABEL]
+Zebra/      Xprinter     Xprinter
+Sunlux      XP-Q800      XP-365B
+               │
+               │ (RJ11 Cable - 24V Solenoid Trigger)
+               ▼
+     [ CASH DRAWER (Maken) ]
+     (Auto-pops upon sale completion)
+  </div>
+
+  <!-- SECTION 5: WHERE TO BUY IN SRI LANKA -->
+  <h2>5. Verified Hardware Vendors & Tech Hubs in Sri Lanka</h2>
+  <div class="vendor-grid">
+    <div class="vendor-card">
+      <strong>1. Unity Plaza (Galle Road, Colombo 04)</strong>
+      &bull; <em>Barclays Computers, Redline Technologies, Nanotek, TechZone, Sense Micro</em><br>
+      &bull; <strong>Best For:</strong> Mini PCs, monitors, UPS units, RAM/SSD upgrades, and USB hubs.
+    </div>
+
+    <div class="vendor-card">
+      <strong>2. Dedicated POS Specialists (Colombo & Online Delivery)</strong>
+      &bull; <em>BarcodeSL / PrintPOS (barcode.lk), POSMarket.lk, MSK Computers, DB Automation</em><br>
+      &bull; <strong>Best For:</strong> Xprinter thermal printers, 50&times;30mm sticker rolls, and Maken cash drawers.
+    </div>
+
+    <div class="vendor-card">
+      <strong>3. Authorized Brand Distributors</strong>
+      &bull; <em>Metropolitan Technologies (Vauxhall St, Colombo 02)</em>: Official Epson receipt printers & Zebra scanners.<br>
+      &bull; <em>E-Guardian / Debug Computers</em>: Brand-new commercial touch terminals & warranties.
+    </div>
+
+    <div class="vendor-card">
+      <strong>4. Kandy Local Suppliers (For Mega Shoes)</strong>
+      &bull; <em>Kandy City Centre (KCC) IT outlets, Peradeniya Road computer dealers</em><br>
+      &bull; <strong>Best For:</strong> Emergency paper roll restocking, UPS battery replacements, and local counter servicing.
+    </div>
+  </div>
+
+  <!-- SECTION 6: TECHNICAL SETUP NOTES -->
+  <h2>6. Technical Compatibility & Best Practices</h2>
+  <div style="font-size: 9.5pt; color: #334155; line-height: 1.45;">
+    <ol style="margin: 0; padding-left: 18px;">
+      <li><strong>Cash Drawer Connection:</strong> The cash drawer does <em>not</em> connect to the computer's USB port. It plugs directly into the <strong>RJ11 port (marked "DK")</strong> on the back of the 80mm receipt printer. When a cash invoice completes, the printer sends a 24V electrical pulse to pop the drawer open automatically.</li>
+      <li><strong>Label Printer Auto-Calibration:</strong> When loading 50&times;30mm sticker rolls into the Xprinter XP-365B, hold the feed button until it beeps twice. The printer automatically calibrates the 2mm gap between stickers. Set Windows paper size to <code>50mm Width &times; 30mm Height, 0mm Margin</code>.</li>
+      <li><strong>Zero Additional Cost for Mobile Stock Counting:</strong> Staff and managers do <em>not</em> need to purchase expensive wireless handheld terminals for stocktaking or inter-branch transfers. The system features a built-in camera barcode scanner that runs directly on any Android or iPhone smartphone via Google Chrome or Safari.</li>
+      <li><strong>Redundant Internet:</strong> Set up a secondary 4G Wi-Fi SIM router (Dialog / SLT-Mobitel) at both counters so billing never stops if the primary fiber connection drops.</li>
+    </ol>
+  </div>
+
+  <div class="footer-note">
+    Document Prepared for RightWay Shoes & Mega Shoes Management &bull; Technical Specifications valid for Next.js Cloud POS Engine &bull; Sri Lanka Market
+  </div>
+
+</body>
+</html>

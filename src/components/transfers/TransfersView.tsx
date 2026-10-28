@@ -181,7 +181,17 @@ export function TransfersView() {
   }
 
   return (
-    <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div
+      className="page-responsive-container"
+      style={{
+        padding: "20px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "20px",
+        minHeight: "100%",
+        paddingBottom: "90px",
+      }}
+    >
       {/* Top Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>

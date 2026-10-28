@@ -41,8 +41,8 @@ describe("Daily Sales & Day-End Status", () => {
   });
 
   it("Test B1: getDailySalesData scopes sales for cashier to their own sales only", () => {
-    // Current date timestamp (approx Oct 27, 2026)
-    const testTimestamp = new Date("2026-10-27T10:00:00+05:30").getTime();
+    // Current date timestamp
+    const testTimestamp = Date.now();
 
     const adminData = getDailySalesData("ALL", testTimestamp, superAdmin);
     const cashierData = getDailySalesData("ALL", testTimestamp, cashierRW);

@@ -265,7 +265,17 @@ export function ReturnsDesk() {
   };
 
   return (
-    <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div
+      className="page-responsive-container"
+      style={{
+        padding: "20px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "20px",
+        minHeight: "100%",
+        paddingBottom: "90px",
+      }}
+    >
       {/* Top Header */}
       <div>
         <h2 style={{ fontSize: "22px", fontWeight: "600", color: "var(--ink)" }}>

@@ -150,12 +150,23 @@ export function InvoicesView({
   };
 
   return (
-    <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px", minWidth: 0 }}>
+    <div
+      className="page-responsive-container"
+      style={{
+        padding: "20px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "16px",
+        minWidth: 0,
+        minHeight: "100%",
+        paddingBottom: "90px",
+      }}
+    >
       {/* Top Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <h2 style={{ fontSize: "22px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
+            <h2 style={{ fontSize: "22px", fontWeight: "800", color: "var(--ink)", margin: 0 }}>
               {isSuperAdmin ? "All Sales Invoices" : "My Issued Invoices"}
             </h2>
             <span className="badge badge-primary" style={{ fontSize: "12px" }}>
@@ -170,7 +181,7 @@ export function InvoicesView({
         </div>
 
         {/* Quick Search */}
-        <div style={{ display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "8px", padding: "0 10px", height: "40px", width: "320px", maxWidth: "100%" }}>
+        <div style={{ display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--line-strong)", borderRadius: "9999px", padding: "0 14px", height: "42px", width: "340px", maxWidth: "100%", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
           <Search size={16} color="var(--ink-3)" style={{ marginRight: "8px", flexShrink: 0 }} />
           <input
             type="text"
@@ -330,18 +341,19 @@ export function InvoicesView({
           </div>
         ) : (
           <>
-            <div style={{ overflowX: "auto" }}>
-              <table className="pos-table">
+            {/* DESKTOP TABLE VIEW — Fit to screen without horizontal scrolling */}
+            <div className="desktop-only-table" style={{ width: "100%", overflowX: "hidden" }}>
+              <table className="pos-table" style={{ width: "100%", tableLayout: "auto" }}>
                 <thead>
                   <tr>
-                    <th>Invoice #</th>
-                    <th>Date & Time</th>
-                    {isSuperAdmin && <th>Issued By</th>}
+                    <th style={{ width: "140px" }}>Invoice #</th>
+                    <th style={{ width: "140px" }}>Date & Time</th>
                     <th>Customer</th>
-                    <th className="num">Total Amount</th>
-                    <th>Payment</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: "right" }}>Actions</th>
+                    <th className="num" style={{ width: "120px" }}>Total</th>
+                    <th style={{ width: "110px" }}>Status</th>
+                    <th style={{ width: "210px", textAlign: "right", position: "sticky", right: 0, background: "var(--surface-sunken)", zIndex: 2 }}>
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -365,78 +377,88 @@ export function InvoicesView({
                         ? "Partial Return"
                         : "Completed";
 
+                    const isSelected = selectedInvoice?.id === sale.id;
+
                     return (
                       <tr
                         key={sale.id}
                         style={{
                           cursor: "pointer",
-                          background: selectedInvoice?.id === sale.id ? "var(--primary-soft)" : undefined,
+                          background: isSelected ? "var(--primary-soft)" : undefined,
                         }}
                         onClick={() => setSelectedInvoice(sale)}
                       >
-                        <td style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
+                        <td style={{ fontWeight: "800", fontVariantNumeric: "tabular-nums" }}>
                           {sale.invoiceNumber}
                         </td>
                         <td style={{ fontSize: "13px", color: "var(--ink-2)", whiteSpace: "nowrap" }}>
                           {formatDate(sale.createdAt)}
+                          {isSuperAdmin && (
+                            <div style={{ fontSize: "11px", color: "var(--ink-3)" }}>{sale.cashierNameCache}</div>
+                          )}
                         </td>
-                        {isSuperAdmin && (
-                          <td style={{ fontSize: "13px", fontWeight: "500" }}>
-                            {sale.cashierNameCache}
-                          </td>
-                        )}
                         <td>
                           {sale.customerName ? (
                             <div>
                               <div style={{ fontWeight: "600", fontSize: "13px" }}>{sale.customerName}</div>
-                              {sale.customerPhone && (
-                                <div style={{ fontSize: "11px", color: "var(--ink-3)" }}>{sale.customerPhone}</div>
-                              )}
+                              <div style={{ fontSize: "11px", color: "var(--ink-3)", textTransform: "capitalize" }}>
+                                {payMethod.toLowerCase().replace("_", " ")} {sale.customerPhone && `• ${sale.customerPhone}`}
+                              </div>
                             </div>
                           ) : (
-                            <span style={{ color: "var(--ink-3)", fontSize: "13px" }}>Walk-in customer</span>
+                            <div>
+                              <span style={{ color: "var(--ink-2)", fontSize: "13px" }}>Walk-in</span>
+                              <div style={{ fontSize: "11px", color: "var(--ink-3)", textTransform: "capitalize" }}>
+                                {payMethod.toLowerCase().replace("_", " ")}
+                              </div>
+                            </div>
                           )}
                         </td>
-                        <td className="num" style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
+                        <td className="num" style={{ fontWeight: "800", fontVariantNumeric: "tabular-nums" }}>
                           {formatCurrency(sale.total)}
                         </td>
                         <td>
-                          <span style={{ fontSize: "12px", color: "var(--ink-2)", textTransform: "capitalize" }}>
-                            {payMethod.toLowerCase().replace("_", " ")}
-                          </span>
+                          <span className={`badge ${statusBadge}`} style={{ fontSize: "11px" }}>{statusText}</span>
                         </td>
-                        <td>
-                          <span className={`badge ${statusBadge}`}>{statusText}</span>
-                        </td>
-                        <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
-                          <div style={{ display: "inline-flex", gap: "6px" }}>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            position: "sticky",
+                            right: 0,
+                            background: isSelected ? "var(--primary-soft)" : "var(--surface)",
+                            zIndex: 1,
+                            boxShadow: "-2px 0 6px rgba(0,0,0,0.03)",
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div style={{ display: "inline-flex", gap: "5px", alignItems: "center" }}>
                             <button
                               className="btn btn-secondary btn-sm"
                               title="View Invoice Details"
                               onClick={() => setSelectedInvoice(sale)}
-                              style={{ height: "32px", padding: "0 8px" }}
+                              style={{ height: "30px", padding: "0 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}
                             >
-                              <Eye size={13} />
-                              <span className="hide-mobile-sm">View</span>
+                              <Eye size={12} />
+                              <span>View</span>
                             </button>
                             <button
                               className="btn btn-secondary btn-sm"
                               title="Reprint Receipt (marked DUPLICATE)"
                               onClick={() => handleReprint(sale)}
-                              style={{ height: "32px", padding: "0 8px" }}
+                              style={{ height: "30px", padding: "0 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}
                             >
-                              <Printer size={13} />
-                              <span className="hide-mobile-sm">Reprint</span>
+                              <Printer size={12} />
+                              <span>Reprint</span>
                             </button>
                             {sale.status === "COMPLETED" && sale.returnStatus !== "FULLY_RETURNED" && (
                               <button
                                 className="btn btn-secondary btn-sm"
                                 title="Process return or exchange against this invoice"
                                 onClick={() => handleStartReturn(sale)}
-                                style={{ height: "32px", padding: "0 8px" }}
+                                style={{ height: "30px", padding: "0 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}
                               >
-                                <RotateCcw size={13} />
-                                <span className="hide-mobile-sm">Return</span>
+                                <RotateCcw size={12} />
+                                <span>Return</span>
                               </button>
                             )}
                           </div>
@@ -446,6 +468,116 @@ export function InvoicesView({
                   })}
                 </tbody>
               </table>
+            </div>
+
+            {/* MOBILE RESPONSIVE CARDS VIEW */}
+            <div className="mobile-only-cards" style={{ display: "none", flexDirection: "column", gap: "10px", padding: "12px" }}>
+              {invoices.map((sale) => {
+                const payMethod = sale.payments?.[0]?.method || "CASH";
+                const statusBadge =
+                  sale.status === "CANCELLED"
+                    ? "badge-danger"
+                    : sale.returnStatus === "FULLY_RETURNED"
+                    ? "badge-neutral"
+                    : sale.returnStatus === "PARTIALLY_RETURNED"
+                    ? "badge-warning"
+                    : "badge-success";
+
+                const statusText =
+                  sale.status === "CANCELLED"
+                    ? "Cancelled"
+                    : sale.returnStatus === "FULLY_RETURNED"
+                    ? "Fully Returned"
+                    : sale.returnStatus === "PARTIALLY_RETURNED"
+                    ? "Partial Return"
+                    : "Completed";
+
+                return (
+                  <div
+                    key={sale.id}
+                    onClick={() => setSelectedInvoice(sale)}
+                    style={{
+                      background: "var(--surface)",
+                      border: "1px solid var(--line)",
+                      borderRadius: "16px",
+                      padding: "14px 16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                      cursor: "pointer",
+                      boxShadow: "0 1px 4px rgba(0,0,0,0.02)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div>
+                        <div style={{ fontSize: "15px", fontWeight: "800", color: "var(--ink)", fontFamily: "monospace" }}>
+                          {sale.invoiceNumber}
+                        </div>
+                        <div style={{ fontSize: "12px", color: "var(--ink-2)", marginTop: "2px" }}>
+                          {formatDate(sale.createdAt)}
+                          {isSuperAdmin && <span> &bull; {sale.cashierNameCache}</span>}
+                        </div>
+                      </div>
+                      <span className={`badge ${statusBadge}`} style={{ fontSize: "11px" }}>{statusText}</span>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: "600", color: "var(--ink)" }}>
+                          {sale.customerName || "Walk-in customer"}
+                        </div>
+                        {sale.customerPhone && (
+                          <div style={{ fontSize: "11px", color: "var(--ink-3)" }}>{sale.customerPhone}</div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: "17px", fontWeight: "900", color: "var(--ink)" }}>
+                          {formatCurrency(sale.total)}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "var(--ink-3)", textTransform: "uppercase", fontWeight: "600" }}>
+                          {payMethod.replace("_", " ")}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        gap: "8px",
+                        borderTop: "1px solid var(--line)",
+                        paddingTop: "8px",
+                        flexWrap: "wrap",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setSelectedInvoice(sale)}
+                        style={{ height: "32px", padding: "0 10px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                      >
+                        <Eye size={13} /> View
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleReprint(sale)}
+                        style={{ height: "32px", padding: "0 10px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                      >
+                        <Printer size={13} /> Reprint
+                      </button>
+                      {sale.status === "COMPLETED" && sale.returnStatus !== "FULLY_RETURNED" && (
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleStartReturn(sale)}
+                          style={{ height: "32px", padding: "0 10px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        >
+                          <RotateCcw size={13} /> Return
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Pagination Controls */}

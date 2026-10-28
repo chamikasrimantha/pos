@@ -240,7 +240,17 @@ export function InventoryView() {
   };
 
   return (
-    <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+    <div
+      className="page-responsive-container"
+      style={{
+        padding: "20px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "16px",
+        minHeight: "100%",
+        paddingBottom: "90px",
+      }}
+    >
       {/* Top Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
         <div>

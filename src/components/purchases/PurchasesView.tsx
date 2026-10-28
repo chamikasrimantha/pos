@@ -128,7 +128,10 @@ export function PurchasesView() {
   }
 
   return (
-    <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div
+      className="page-responsive-container"
+      style={{ padding: "24px", paddingBottom: "90px", display: "flex", flexDirection: "column", gap: "20px" }}
+    >
       {/* Top Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>

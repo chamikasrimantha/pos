@@ -58,6 +58,7 @@ export function DailySalesView() {
   const [month, setMonth] = useState<number>(nowParts.month); // 1-12
   const [selectedDay, setSelectedDay] = useState<number>(nowParts.day);
   const [isMonthPackOpen, setIsMonthPackOpen] = useState(false);
+  const [showFullMonthGridMobile, setShowFullMonthGridMobile] = useState(false);
 
   const allShops = useMemo(() => getShops(), [dataVersion]);
 
@@ -91,6 +92,14 @@ export function DailySalesView() {
       isSuperAdmin ? undefined : currentUser || undefined
     );
   }, [selectedShopId, year, month, isSuperAdmin, currentUser, dataVersion]);
+
+  // Day of week index for the 1st of this month (0 = Sun, 1 = Mon, ... 6 = Sat)
+  const firstDayOfMonth = useMemo(() => {
+    const d = new Date(Date.UTC(year, month - 1, 1, 12, 0, 0));
+    return d.getUTCDay();
+  }, [year, month]);
+
+  const todayColomboParts = useMemo(() => getColomboDateParts(), []);
 
   // Selected Day timestamp
   const selectedDayTimestamp = useMemo(() => {
@@ -278,87 +287,323 @@ export function DailySalesView() {
           </span>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(115px, 1fr))",
-            gap: "8px",
-          }}
-        >
-          {monthSummaries.map((item) => {
-            const isSelected = item.day === selectedDay;
-            return (
-              <button
-                key={item.day}
-                onClick={() => setSelectedDay(item.day)}
+        {/* DESKTOP CALENDAR VIEW (>= 768px): 7-Column Authentic Calendar Grid */}
+        <div className="desktop-only" style={{ width: "100%" }}>
+          {/* Weekday Header Row */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+              gap: "8px",
+              marginBottom: "8px",
+              textAlign: "center",
+            }}
+          >
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((dayName) => (
+              <div
+                key={dayName}
                 style={{
-                  background: isSelected
-                    ? "var(--primary)"
-                    : item.hasSales
-                    ? "var(--surface)"
-                    : "var(--surface-muted, #fafafa)",
-                  color: isSelected ? "#fff" : "var(--ink)",
-                  border: isSelected
-                    ? "1px solid var(--primary)"
-                    : item.hasSales
-                    ? "1px solid var(--line-strong)"
-                    : "1px solid var(--line)",
-                  borderRadius: "var(--radius-control)",
-                  padding: "8px 10px",
-                  textAlign: "left",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                  opacity: !item.hasSales && !isSelected ? 0.75 : 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  minHeight: "68px",
+                  fontSize: "12px",
+                  fontWeight: "700",
+                  color: "var(--ink-3)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  padding: "4px 0",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ fontSize: "16px", fontWeight: "800" }}>{item.day}</span>
-                  <span style={{ fontSize: "11px", fontWeight: "600", opacity: isSelected ? 0.9 : 0.6 }}>
-                    {item.dayOfWeek}
-                  </span>
-                </div>
-                <div>
-                  {item.hasSales ? (
-                    <div>
-                      <div
+                {dayName}
+              </div>
+            ))}
+          </div>
+
+          {/* 7-Column Month Days Grid */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+              gap: "8px",
+            }}
+          >
+            {/* Blank leading slots before the 1st of the month */}
+            {Array.from({ length: firstDayOfMonth }).map((_, idx) => (
+              <div
+                key={`blank-${idx}`}
+                style={{
+                  minHeight: "78px",
+                  borderRadius: "12px",
+                  background: "var(--surface-sunken)",
+                  opacity: 0.35,
+                  border: "1px dashed var(--line)",
+                }}
+              />
+            ))}
+
+            {/* Days 1 to daysInMonth */}
+            {monthSummaries.map((item) => {
+              const isSelected = item.day === selectedDay;
+              const isToday =
+                todayColomboParts.year === year &&
+                todayColomboParts.month === month &&
+                todayColomboParts.day === item.day;
+
+              return (
+                <button
+                  key={item.day}
+                  type="button"
+                  onClick={() => setSelectedDay(item.day)}
+                  style={{
+                    background: isSelected
+                      ? "var(--primary)"
+                      : item.hasSales
+                      ? "var(--surface)"
+                      : "var(--surface-sunken)",
+                    color: isSelected ? "#ffffff" : "var(--ink)",
+                    border: isSelected
+                      ? "2px solid var(--primary)"
+                      : item.hasSales
+                      ? "1px solid var(--primary-soft)"
+                      : "1px solid var(--line)",
+                    borderRadius: "12px",
+                    padding: "8px 10px",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    minHeight: "78px",
+                    boxShadow: isSelected
+                      ? "0 4px 12px rgba(32, 86, 200, 0.28)"
+                      : item.hasSales
+                      ? "0 1px 3px rgba(0,0,0,0.03)"
+                      : "none",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "16px", fontWeight: isSelected ? "900" : "800" }}>
+                      {item.day}
+                    </span>
+                    {isToday && (
+                      <span
                         style={{
-                          fontSize: "10px",
-                          fontWeight: "700",
-                          background: isSelected ? "rgba(255,255,255,0.25)" : "var(--primary-soft)",
-                          color: isSelected ? "#fff" : "var(--primary-ink)",
-                          display: "inline-block",
+                          fontSize: "9px",
+                          fontWeight: "800",
                           padding: "1px 5px",
-                          borderRadius: "3px",
-                          marginBottom: "2px",
+                          borderRadius: "9999px",
+                          background: isSelected ? "#ffffff" : "var(--primary)",
+                          color: isSelected ? "var(--primary)" : "#ffffff",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.4px",
                         }}
                       >
-                        {item.invoiceCount} {item.invoiceCount === 1 ? "inv" : "invs"}
+                        Today
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: "4px" }}>
+                    {item.hasSales ? (
+                      <div>
+                        <div
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: "700",
+                            background: isSelected ? "rgba(255,255,255,0.25)" : "var(--primary-soft)",
+                            color: isSelected ? "#ffffff" : "var(--primary-ink)",
+                            display: "inline-block",
+                            padding: "1px 5px",
+                            borderRadius: "4px",
+                            marginBottom: "2px",
+                          }}
+                        >
+                          {item.invoiceCount} {item.invoiceCount === 1 ? "inv" : "invs"}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: "800",
+                            fontVariantNumeric: "tabular-nums",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {formatCurrency(item.netSales)}
+                        </div>
                       </div>
+                    ) : (
                       <div
                         style={{
-                          fontSize: "12px",
-                          fontWeight: "700",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
+                          fontSize: "11px",
+                          color: isSelected ? "rgba(255,255,255,0.6)" : "var(--ink-4)",
                         }}
                       >
-                        {formatCurrency(item.netSales)}
+                        No sales
                       </div>
-                    </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* MOBILE CALENDAR VIEW (< 768px): Horizontal Day Strip + 7-Column Month Matrix */}
+        <div className="mobile-only-cards" style={{ display: "none", flexDirection: "column", gap: "10px" }}>
+          {/* Quick Date Swipeable Strip */}
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              overflowX: "auto",
+              paddingBottom: "8px",
+              scrollbarWidth: "none",
+            }}
+          >
+            {monthSummaries.map((item) => {
+              const isSelected = item.day === selectedDay;
+              const isToday =
+                todayColomboParts.year === year &&
+                todayColomboParts.month === month &&
+                todayColomboParts.day === item.day;
+
+              return (
+                <button
+                  key={item.day}
+                  type="button"
+                  onClick={() => setSelectedDay(item.day)}
+                  style={{
+                    flex: "0 0 68px",
+                    height: "76px",
+                    borderRadius: "14px",
+                    border: isSelected ? "2px solid var(--primary)" : "1px solid var(--line-strong)",
+                    background: isSelected ? "var(--primary)" : item.hasSales ? "var(--surface)" : "var(--surface-sunken)",
+                    color: isSelected ? "#ffffff" : "var(--ink)",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "8px 4px",
+                    cursor: "pointer",
+                    boxShadow: isSelected ? "0 3px 10px rgba(32, 86, 200, 0.3)" : "none",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <span style={{ fontSize: "11px", fontWeight: "700", opacity: isSelected ? 0.9 : 0.65 }}>
+                    {isToday ? "TODAY" : item.dayOfWeek}
+                  </span>
+                  <span style={{ fontSize: "18px", fontWeight: "900" }}>{item.day}</span>
+                  {item.hasSales ? (
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        fontWeight: "800",
+                        padding: "1px 5px",
+                        borderRadius: "9999px",
+                        background: isSelected ? "#ffffff" : "var(--primary-soft)",
+                        color: isSelected ? "var(--primary-ink)" : "var(--primary)",
+                      }}
+                    >
+                      {item.invoiceCount} inv
+                    </span>
                   ) : (
-                    <div style={{ fontSize: "11px", color: isSelected ? "#fff" : "var(--ink-4)" }}>
-                      No sales
-                    </div>
+                    <span style={{ width: "4px", height: "4px", borderRadius: "9999px", background: isSelected ? "#fff" : "transparent" }} />
                   )}
-                </div>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowFullMonthGridMobile(!showFullMonthGridMobile)}
+            style={{
+              background: "var(--surface-sunken)",
+              border: "1px solid var(--line)",
+              borderRadius: "10px",
+              padding: "7px 14px",
+              fontSize: "12px",
+              fontWeight: "700",
+              color: "var(--ink-2)",
+              alignSelf: "center",
+              cursor: "pointer",
+            }}
+          >
+            {showFullMonthGridMobile ? "Hide Month Calendar" : "View Full Month Calendar"}
+          </button>
+
+          {showFullMonthGridMobile && (
+            <div style={{ marginTop: "6px" }}>
+              {/* Mobile 7-Column Header */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  gap: "4px",
+                  marginBottom: "4px",
+                  textAlign: "center",
+                }}
+              >
+                {["S", "M", "T", "W", "T", "F", "S"].map((initial, i) => (
+                  <div key={i} style={{ fontSize: "11px", fontWeight: "800", color: "var(--ink-3)" }}>
+                    {initial}
+                  </div>
+                ))}
+              </div>
+
+              {/* Mobile 7-Column Days */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  gap: "4px",
+                }}
+              >
+                {Array.from({ length: firstDayOfMonth }).map((_, idx) => (
+                  <div key={`m-blank-${idx}`} style={{ height: "46px" }} />
+                ))}
+                {monthSummaries.map((item) => {
+                  const isSelected = item.day === selectedDay;
+                  return (
+                    <button
+                      key={item.day}
+                      type="button"
+                      onClick={() => setSelectedDay(item.day)}
+                      style={{
+                        height: "46px",
+                        borderRadius: "8px",
+                        border: isSelected ? "2px solid var(--primary)" : "1px solid var(--line)",
+                        background: isSelected ? "var(--primary)" : item.hasSales ? "var(--surface)" : "var(--surface-sunken)",
+                        color: isSelected ? "#ffffff" : "var(--ink)",
+                        padding: "3px 2px",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        position: "relative",
+                      }}
+                    >
+                      <span style={{ fontSize: "13px", fontWeight: isSelected ? "900" : "700" }}>
+                        {item.day}
+                      </span>
+                      {item.hasSales && (
+                        <span
+                          style={{
+                            width: "5px",
+                            height: "5px",
+                            borderRadius: "9999px",
+                            background: isSelected ? "#ffffff" : "var(--primary)",
+                            marginTop: "2px",
+                          }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -414,8 +659,8 @@ export function DailySalesView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "16px",
+          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+          gap: "12px",
           marginBottom: "24px",
         }}
       >
@@ -521,7 +766,8 @@ export function DailySalesView() {
         <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--ink)", marginBottom: "12px" }}>
           Cashier Shifts & Drawer Reconciliation
         </div>
-        <div style={{ overflowX: "auto" }}>
+        {/* Desktop Shifts Table */}
+        <div className="desktop-only-table" style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
             <thead>
               <tr style={{ background: "var(--surface-muted, #f9fafb)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
@@ -548,15 +794,8 @@ export function DailySalesView() {
                     <td style={{ padding: "10px 12px", fontWeight: "600" }}>{sh.cashierName}</td>
                     <td style={{ padding: "10px 12px", textAlign: "center" }}>
                       <span
-                        style={{
-                          display: "inline-block",
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          fontSize: "11px",
-                          fontWeight: "700",
-                          background: sh.status === "CLOSED" ? "var(--success-soft, #dcfce7)" : "var(--primary-soft)",
-                          color: sh.status === "CLOSED" ? "var(--success)" : "var(--primary-ink)",
-                        }}
+                        className={`badge ${sh.status === "CLOSED" ? "badge-success" : "badge-primary"}`}
+                        style={{ fontSize: "11px" }}
                       >
                         {sh.status}
                       </span>
@@ -584,6 +823,49 @@ export function DailySalesView() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile Shifts Cards */}
+        <div className="mobile-only-cards" style={{ display: "none", flexDirection: "column", gap: "10px" }}>
+          {dailyData.shifts.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "16px", color: "var(--ink-3)", fontSize: "13px" }}>
+              No shifts recorded for this day.
+            </div>
+          ) : (
+            dailyData.shifts.map((sh) => (
+              <div
+                key={sh.id}
+                style={{
+                  background: "var(--surface-sunken)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "14px",
+                  padding: "12px 14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: "800", color: "var(--ink)", fontSize: "14px" }}>{sh.cashierName}</span>
+                  <span className={`badge ${sh.status === "CLOSED" ? "badge-success" : "badge-primary"}`} style={{ fontSize: "11px" }}>
+                    {sh.status}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", fontSize: "12px", color: "var(--ink-2)" }}>
+                  <div>Float: <strong>{formatCurrency(sh.openingFloat)}</strong></div>
+                  <div>Cash Sales: <strong>{formatCurrency(sh.cashSales)}</strong></div>
+                  <div>Cash Out: <strong>{formatCurrency(sh.cashDrops)}</strong></div>
+                  <div>Expected: <strong style={{ color: "var(--primary)" }}>{formatCurrency(sh.expectedCash)}</strong></div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line)", paddingTop: "6px", fontSize: "13px" }}>
+                  <span>Counted: <strong>{sh.closingCountedCash !== undefined ? formatCurrency(sh.closingCountedCash) : "Open"}</strong></span>
+                  <span style={{ fontWeight: "800", color: (sh.variance || 0) < 0 ? "var(--danger)" : "var(--success)" }}>
+                    Var: {sh.variance !== undefined ? formatCurrency(sh.variance) : "-"}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* Invoices List Table */}
@@ -602,7 +884,8 @@ export function DailySalesView() {
           </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
+        {/* Desktop Invoices Table */}
+        <div className="desktop-only-table" style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
             <thead>
               <tr style={{ background: "var(--surface-muted, #f9fafb)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
@@ -631,29 +914,16 @@ export function DailySalesView() {
                     <td style={{ padding: "10px 12px" }}>{sale.customerName || "Walk-in"}</td>
                     <td style={{ padding: "10px 12px", textAlign: "center" }}>
                       <span
-                        style={{
-                          display: "inline-block",
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          fontSize: "11px",
-                          fontWeight: "700",
-                          background:
-                            sale.status === "COMPLETED"
-                              ? sale.returnStatus === "PARTIALLY_RETURNED"
-                                ? "var(--warning-soft, #fef3c7)"
-                                : sale.returnStatus === "FULLY_RETURNED"
-                                ? "var(--danger-soft, #fee2e2)"
-                                : "var(--success-soft, #dcfce7)"
-                              : "var(--surface-muted)",
-                          color:
-                            sale.status === "COMPLETED"
-                              ? sale.returnStatus === "PARTIALLY_RETURNED"
-                                ? "var(--warning-ink, #b45309)"
-                                : sale.returnStatus === "FULLY_RETURNED"
-                                ? "var(--danger)"
-                                : "var(--success)"
-                              : "var(--ink-3)",
-                        }}
+                        className={`badge ${
+                          sale.status === "COMPLETED"
+                            ? sale.returnStatus === "PARTIALLY_RETURNED"
+                              ? "badge-warning"
+                              : sale.returnStatus === "FULLY_RETURNED"
+                              ? "badge-danger"
+                              : "badge-success"
+                            : "badge-neutral"
+                        }`}
+                        style={{ fontSize: "11px" }}
                       >
                         {sale.status === "COMPLETED"
                           ? sale.returnStatus === "PARTIALLY_RETURNED"
@@ -671,7 +941,7 @@ export function DailySalesView() {
                       <button
                         onClick={() => handlePrintSingleInvoice(sale)}
                         className="btn btn-secondary btn-sm"
-                        style={{ height: "30px", padding: "0 8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        style={{ height: "30px", padding: "0 8px", borderRadius: "8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
                       >
                         <Printer size={13} />
                         <span>Print</span>
@@ -682,6 +952,82 @@ export function DailySalesView() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Invoices Cards */}
+        <div className="mobile-only-cards" style={{ display: "none", flexDirection: "column", gap: "10px" }}>
+          {dailyData.sales.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "16px", color: "var(--ink-3)", fontSize: "13px" }}>
+              No invoices recorded on this day.
+            </div>
+          ) : (
+            dailyData.sales.map((sale) => (
+              <div
+                key={sale.id}
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "14px",
+                  padding: "12px 14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.02)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <span style={{ fontSize: "14px", fontWeight: "800", color: "var(--ink)" }}>
+                      {sale.invoiceNumber}
+                    </span>
+                    <div style={{ fontSize: "12px", color: "var(--ink-2)", marginTop: "1px" }}>
+                      {formatDate(sale.createdAt)} &bull; {sale.cashierNameCache || "Cashier"}
+                    </div>
+                  </div>
+                  <span
+                    className={`badge ${
+                      sale.status === "COMPLETED"
+                        ? sale.returnStatus === "PARTIALLY_RETURNED"
+                          ? "badge-warning"
+                          : sale.returnStatus === "FULLY_RETURNED"
+                          ? "badge-danger"
+                          : "badge-success"
+                        : "badge-neutral"
+                    }`}
+                    style={{ fontSize: "11px" }}
+                  >
+                    {sale.status === "COMPLETED"
+                      ? sale.returnStatus === "PARTIALLY_RETURNED"
+                        ? "PARTIAL"
+                        : sale.returnStatus === "FULLY_RETURNED"
+                        ? "RETURNED"
+                        : "COMPLETED"
+                      : "CANCELLED"}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line)", paddingTop: "8px" }}>
+                  <div>
+                    <span style={{ fontSize: "11px", color: "var(--ink-3)" }}>Customer: </span>
+                    <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--ink)" }}>{sale.customerName || "Walk-in"}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "15px", fontWeight: "800", color: "var(--ink)" }}>
+                      {formatCurrency(sale.total)}
+                    </span>
+                    <button
+                      onClick={() => handlePrintSingleInvoice(sale)}
+                      className="btn btn-secondary btn-sm"
+                      style={{ height: "32px", padding: "0 10px", borderRadius: "8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                    >
+                      <Printer size={13} />
+                      <span>Print</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

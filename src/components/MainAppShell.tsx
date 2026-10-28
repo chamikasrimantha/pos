@@ -105,12 +105,18 @@ export function MainAppShell() {
 
         {/* Dynamic Operational Screen (Viewport) */}
         <main
+          id="pos-main-scroll-viewport"
+          className="app-main-viewport"
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            overflow: "hidden",
+            overflowY: activeView === "pos" ? "hidden" : "auto",
+            overflowX: "hidden",
             position: "relative",
+            WebkitOverflowScrolling: "touch",
+            minHeight: 0,
+            width: "100%",
           }}
         >
           {activeView === "pos" && <PosView />}
