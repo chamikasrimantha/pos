@@ -211,3 +211,4 @@ describe("WP3: Products, Catalogue, Editing, Quick Add, Label Editor", () => {
     expect(can(cashier, "products.print_labels")).toBe(true);
   });
 });
+

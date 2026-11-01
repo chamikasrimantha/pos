@@ -534,3 +534,4 @@ export function ScanPriceDialog({
     </div>
   );
 }
+

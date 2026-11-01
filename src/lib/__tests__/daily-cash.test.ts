@@ -231,3 +231,4 @@ describe("Daily Cash Summary — Pure Transaction Reconciliation", () => {
     expect(summary.netCashMovement).toBe(7500);
   });
 });
+
