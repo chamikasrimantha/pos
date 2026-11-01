@@ -38,15 +38,20 @@ export interface UserProfile {
   canCreatePurchase?: boolean; // Granted to managers if enabled
 }
 
+export type ProductType = "FOOTWEAR" | "BAG";
+export type ReviewStatus = "APPROVED" | "NEEDS_REVIEW" | "REJECTED";
+
 export interface Category {
   id: string;
   name: string;
   description?: string;
+  productType?: ProductType;
 }
 
 export interface Brand {
   id: string;
   name: string;
+  productType?: ProductType | "BOTH";
 }
 
 export interface Color {
@@ -57,18 +62,24 @@ export interface Color {
 
 export interface ShoeSize {
   id: string;
-  label: string; // e.g. "41", "42", "43", "US 9"
-  gender: Gender;
+  label: string; // e.g. "41", "42", "43", "US 9", "S", "M", "L", "24 inch"
+  gender?: Gender;
+  productType?: ProductType;
 }
+
+export type ProductSize = ShoeSize;
 
 export interface Product {
   id: string;
   name: string; // e.g. "Air Max Supreme"
+  productType?: ProductType; // "FOOTWEAR" | "BAG" (default "FOOTWEAR")
   brandId: string;
   categoryId: string;
-  gender: Gender;
+  gender?: Gender;
   imagePath?: string;
   active: boolean;
+  reviewStatus?: ReviewStatus;
+  reviewReason?: string;
   createdAt: number;
   updatedAt: number;
   createdBy: string;
@@ -77,6 +88,7 @@ export interface Product {
 export interface ProductVariant {
   id: string;
   productId: string;
+  productType?: ProductType;
   colorId: string;
   sizeId: string;
   sku: string; // e.g. "RW-AIRMAX-BLK-42"
@@ -88,6 +100,7 @@ export interface ProductVariant {
   brandNameCache: string;
   colorNameCache: string;
   sizeLabelCache: string;
+  reviewStatus?: ReviewStatus;
   active: boolean;
 }
 

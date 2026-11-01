@@ -18,6 +18,8 @@ import {
   ShoeSize,
   Product,
   ProductVariant,
+  ProductType,
+  ReviewStatus,
   Inventory,
   StockMovement,
   CashierShift,
@@ -210,7 +212,53 @@ function loadLocalStore(): LocalStoreState {
       parsed.sales = [...SEED_SALES];
       parsed.saleItems = [...SEED_SALE_ITEMS];
     }
-    if (cleanManagerUsers(parsed)) {
+    if (!parsed.inventory) parsed.inventory = {};
+
+    let dataSynced = false;
+    // Auto-merge new categories, brands, sizes, products, variants & inventory
+    SEED_CATEGORIES.forEach((c) => {
+      if (!parsed.categories?.some((pc: Category) => pc.id === c.id)) {
+        if (!parsed.categories) parsed.categories = [];
+        parsed.categories.push({ ...c });
+        dataSynced = true;
+      }
+    });
+    SEED_BRANDS.forEach((b) => {
+      if (!parsed.brands?.some((pb: Brand) => pb.id === b.id)) {
+        if (!parsed.brands) parsed.brands = [];
+        parsed.brands.push({ ...b });
+        dataSynced = true;
+      }
+    });
+    SEED_SIZES.forEach((s) => {
+      if (!parsed.sizes?.some((ps: ShoeSize) => ps.id === s.id)) {
+        if (!parsed.sizes) parsed.sizes = [];
+        parsed.sizes.push({ ...s });
+        dataSynced = true;
+      }
+    });
+    SEED_PRODUCTS.forEach((p) => {
+      if (!parsed.products?.some((pp: Product) => pp.id === p.id)) {
+        if (!parsed.products) parsed.products = [];
+        parsed.products.push({ ...p });
+        dataSynced = true;
+      }
+    });
+    SEED_VARIANTS.forEach((v) => {
+      if (!parsed.variants?.some((pv: ProductVariant) => pv.id === v.id)) {
+        if (!parsed.variants) parsed.variants = [];
+        parsed.variants.push({ ...v });
+        dataSynced = true;
+      }
+    });
+    SEED_INVENTORIES.forEach((inv) => {
+      if (!parsed.inventory[inv.id]) {
+        parsed.inventory[inv.id] = { ...inv };
+        dataSynced = true;
+      }
+    });
+
+    if (cleanManagerUsers(parsed) || dataSynced) {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
     }
     return parsed;
@@ -282,28 +330,378 @@ export function getUsers(includeHidden = false): UserProfile[] {
   return loadLocalStore().users.filter((u) => includeHidden || !u.hidden);
 }
 
-export function getCategories(): Category[] {
-  return loadLocalStore().categories;
+export function getCategories(productType?: ProductType): Category[] {
+  const cats = loadLocalStore().categories;
+  if (!productType) return cats;
+  return cats.filter((c) => !c.productType || c.productType === productType);
 }
 
-export function getBrands(): Brand[] {
-  return loadLocalStore().brands;
+export function getBrands(productType?: ProductType): Brand[] {
+  const brands = loadLocalStore().brands;
+  if (!productType) return brands;
+  return brands.filter(
+    (b) => !b.productType || b.productType === "BOTH" || b.productType === productType
+  );
 }
 
 export function getColors(): Color[] {
   return loadLocalStore().colors;
 }
 
-export function getSizes(): ShoeSize[] {
-  return loadLocalStore().sizes;
+export function getSizes(productType?: ProductType): ShoeSize[] {
+  const sizes = loadLocalStore().sizes;
+  if (!productType) return sizes;
+  return sizes.filter((s) => !s.productType || s.productType === productType);
 }
 
-export function getProducts(): Product[] {
-  return loadLocalStore().products;
+export function getProducts(productType?: ProductType): Product[] {
+  const products = loadLocalStore().products;
+  if (!productType) return products;
+  return products.filter((p) => (p.productType || "FOOTWEAR") === productType);
 }
 
-export function getVariants(): ProductVariant[] {
-  return loadLocalStore().variants;
+export function getVariants(productType?: ProductType): ProductVariant[] {
+  const variants = loadLocalStore().variants;
+  if (!productType) return variants;
+  return variants.filter((v) => (v.productType || "FOOTWEAR") === productType);
+}
+
+/**
+ * Mathematically generates a valid, unique 13-digit EAN barcode with correct Modulo-10 checksum
+ */
+export function generateEan13Barcode(existingBarcodes?: string[]): string {
+  const store = loadLocalStore();
+  const knownBarcodes = new Set(existingBarcodes || store.variants.map((v) => v.barcode));
+
+  for (let attempt = 0; attempt < 200; attempt++) {
+    // Generate 12 digits: Sri Lanka country/in-store prefix "20" + 10 random digits
+    const random10 = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+    const base12 = "20" + random10;
+
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+      const digit = parseInt(base12[i], 10);
+      sum += i % 2 === 0 ? digit : digit * 3;
+    }
+    const checksum = (10 - (sum % 10)) % 10;
+    const candidate = base12 + checksum.toString();
+    if (!knownBarcodes.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Fallback timestamp-based
+  const ts = Date.now().toString().slice(-10);
+  const base12 = "20" + ts;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    const digit = parseInt(base12[i], 10);
+    sum += i % 2 === 0 ? digit : digit * 3;
+  }
+  const checksum = (10 - (sum % 10)) % 10;
+  return base12 + checksum.toString();
+}
+
+export interface QuickProductInput {
+  productType: ProductType;
+  name: string;
+  categoryId: string;
+  brandId: string;
+  colorId: string;
+  sizeId: string;
+  sellingPrice: number;
+  referenceCostPrice?: number;
+  startingQuantity?: number;
+  shopId: string;
+  createdBy: string;
+  barcode?: string;
+  sku?: string;
+}
+
+export async function createQuickProduct(
+  input: QuickProductInput
+): Promise<{ product: Product; variant: ProductVariant }> {
+  const store = loadLocalStore();
+  const now = Date.now();
+
+  const category = store.categories.find((c) => c.id === input.categoryId);
+  const brand = store.brands.find((b) => b.id === input.brandId);
+  const color = store.colors.find((c) => c.id === input.colorId);
+  const size = store.sizes.find((s) => s.id === input.sizeId);
+
+  // Barcode generation or uniqueness check
+  let barcode = (input.barcode || "").trim();
+  if (!barcode) {
+    barcode = generateEan13Barcode(store.variants.map((v) => v.barcode));
+  } else {
+    const exists = store.variants.some((v) => v.barcode === barcode);
+    if (exists) {
+      throw new Error(`Barcode "${barcode}" is already registered to an existing product variant.`);
+    }
+  }
+
+  // SKU generation or uniqueness check
+  let sku = (input.sku || "").trim().toUpperCase();
+  if (!sku) {
+    const brandPrefix = (brand?.name || "GEN").replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase();
+    const namePrefix = input.name.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase() || "ITM";
+    const colPrefix = (color?.name || "CLR").replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase();
+    const szClean = (size?.label || "STD").replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase();
+    const typePrefix = input.productType === "BAG" ? "BAG" : "FTW";
+    sku = `${typePrefix}-${brandPrefix}-${namePrefix}-${colPrefix}-${szClean}`;
+    if (store.variants.some((v) => v.sku === sku)) {
+      sku = `${sku}-${Math.floor(10 + Math.random() * 90)}`;
+    }
+  }
+
+  const productId = `prod_quick_${now}_${Math.floor(100 + Math.random() * 900)}`;
+  const variantId = `var_quick_${now}_${Math.floor(100 + Math.random() * 900)}`;
+
+  const newProduct: Product = {
+    id: productId,
+    name: input.name.trim(),
+    productType: input.productType,
+    brandId: input.brandId,
+    categoryId: input.categoryId,
+    gender: input.productType === "BAG" ? "UNISEX" : (size?.gender || "UNISEX"),
+    active: true,
+    reviewStatus: "NEEDS_REVIEW",
+    reviewReason: "Quick added at counter",
+    createdAt: now,
+    updatedAt: now,
+    createdBy: input.createdBy,
+  };
+
+  const newVariant: ProductVariant = {
+    id: variantId,
+    productId: productId,
+    productType: input.productType,
+    colorId: input.colorId,
+    sizeId: input.sizeId,
+    sku: sku,
+    barcode: barcode,
+    barcodeSource: "INTERNAL",
+    referenceCostPrice: input.referenceCostPrice || 0,
+    sellingPrice: input.sellingPrice,
+    productNameCache: input.name.trim(),
+    brandNameCache: brand?.name || "Generic",
+    colorNameCache: color?.name || "Standard",
+    sizeLabelCache: size?.label || "Standard",
+    reviewStatus: "NEEDS_REVIEW",
+    active: true,
+  };
+
+  store.products.push(newProduct);
+  store.variants.push(newVariant);
+
+  const qty = Number(input.startingQuantity) || 0;
+  if (qty > 0) {
+    const invKey = `${input.shopId}_${variantId}`;
+    store.inventory[invKey] = {
+      id: invKey,
+      shopId: input.shopId,
+      variantId: variantId,
+      productId: productId,
+      quantityOnHand: qty,
+      reorderLevel: 2,
+      lastMovementAt: now,
+    };
+
+    const movId = `mov_${now}_${Math.floor(100 + Math.random() * 900)}`;
+    const movement: StockMovement = {
+      id: movId,
+      shopId: input.shopId,
+      variantId: variantId,
+      productId: productId,
+      type: "ADJUSTMENT_IN",
+      quantity: qty,
+      direction: "IN",
+      quantityBefore: 0,
+      quantityAfter: qty,
+      referenceType: "ADJUSTMENT",
+      referenceId: "QUICK_ADD",
+      userId: input.createdBy,
+      createdAt: now,
+      reason: "Quick add starting stock at counter",
+    };
+    store.movements.push(movement);
+  }
+
+  logAuditAction(store, {
+    userId: input.createdBy,
+    userEmailCache: input.createdBy,
+    action: "QUICK_ADD_PRODUCT",
+    entityType: "product",
+    entityId: newProduct.id,
+    before: null,
+    after: { product: newProduct, variant: newVariant, startingQuantity: qty },
+    reason: `Quick-added product "${newProduct.name}" (${newVariant.sku})`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await setDoc(doc(db, "products", newProduct.id), newProduct);
+    await setDoc(doc(db, "productVariants", newVariant.id), newVariant);
+    if (qty > 0) {
+      const invKey = `${input.shopId}_${variantId}`;
+      await setDoc(doc(db, "inventory", invKey), store.inventory[invKey]);
+    }
+  } catch (err) {
+    console.warn("Firestore sync quick add error:", err);
+  }
+
+  return { product: newProduct, variant: newVariant };
+}
+
+export interface UpdateProductMasterInput {
+  productId: string;
+  variantId: string;
+  name?: string;
+  brandId?: string;
+  categoryId?: string;
+  productType?: ProductType;
+  colorId?: string;
+  sizeId?: string;
+  sku?: string;
+  barcode?: string;
+  sellingPrice?: number;
+  referenceCostPrice?: number;
+  active?: boolean;
+  user: UserProfile;
+}
+
+export async function updateProductMaster(
+  input: UpdateProductMasterInput
+): Promise<{ product: Product; variant: ProductVariant }> {
+  const store = loadLocalStore();
+  const { user } = input;
+  const now = Date.now();
+
+  // Section 2.3 Role Enforcement: Cashiers cannot edit existing catalog products
+  if (user.role === "CASHIER") {
+    throw new Error("Cashiers are not permitted to edit existing catalogue products.");
+  }
+
+  const product = store.products.find((p) => p.id === input.productId);
+  if (!product) throw new Error("Product not found");
+
+  const variant = store.variants.find((v) => v.id === input.variantId);
+  if (!variant) throw new Error("Product variant not found");
+
+  const beforeProduct = { ...product };
+  const beforeVariant = { ...variant };
+
+  // Shop Manager CANNOT edit cost price
+  if (user.role === "SHOP_MANAGER") {
+    if (
+      input.referenceCostPrice !== undefined &&
+      input.referenceCostPrice !== variant.referenceCostPrice
+    ) {
+      throw new Error("Shop Managers are not permitted to edit cost prices.");
+    }
+  }
+
+  // Barcode uniqueness check
+  if (input.barcode && input.barcode !== variant.barcode) {
+    const exists = store.variants.some((v) => v.id !== variant.id && v.barcode === input.barcode);
+    if (exists) {
+      throw new Error(`Barcode "${input.barcode}" is already registered to another variant.`);
+    }
+    variant.barcode = input.barcode;
+  }
+
+  if (input.name !== undefined) {
+    product.name = input.name.trim();
+    variant.productNameCache = input.name.trim();
+  }
+  if (input.productType !== undefined) {
+    product.productType = input.productType;
+    variant.productType = input.productType;
+  }
+  if (input.brandId !== undefined) {
+    product.brandId = input.brandId;
+    const b = store.brands.find((br) => br.id === input.brandId);
+    if (b) variant.brandNameCache = b.name;
+  }
+  if (input.categoryId !== undefined) {
+    product.categoryId = input.categoryId;
+  }
+  if (input.colorId !== undefined) {
+    variant.colorId = input.colorId;
+    const c = store.colors.find((col) => col.id === input.colorId);
+    if (c) variant.colorNameCache = c.name;
+  }
+  if (input.sizeId !== undefined) {
+    variant.sizeId = input.sizeId;
+    const s = store.sizes.find((sz) => sz.id === input.sizeId);
+    if (s) variant.sizeLabelCache = s.label;
+  }
+  if (input.sku !== undefined) {
+    variant.sku = input.sku.trim();
+  }
+  if (input.sellingPrice !== undefined) {
+    variant.sellingPrice = input.sellingPrice;
+  }
+  // Cost price: only SUPER_ADMIN
+  if (user.role === "SUPER_ADMIN" && input.referenceCostPrice !== undefined) {
+    variant.referenceCostPrice = input.referenceCostPrice;
+  }
+  if (input.active !== undefined) {
+    product.active = input.active;
+    variant.active = input.active;
+  }
+
+  product.updatedAt = now;
+
+  logAuditAction(store, {
+    userId: user.uid,
+    userEmailCache: user.email || user.displayName,
+    action: "UPDATE_PRODUCT",
+    entityType: "product",
+    entityId: product.id,
+    before: { product: beforeProduct, variant: beforeVariant },
+    after: { product, variant },
+    reason: `Updated product "${product.name}" (${variant.sku})`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await setDoc(doc(db, "products", product.id), product);
+    await setDoc(doc(db, "productVariants", variant.id), variant);
+  } catch (err) {
+    console.warn("Firestore sync product update error:", err);
+  }
+
+  return { product, variant };
+}
+
+export async function updateProductReviewStatus(
+  productId: string,
+  variantId: string,
+  status: ReviewStatus,
+  reviewerId: string,
+  reason?: string
+): Promise<void> {
+  const store = loadLocalStore();
+  const product = store.products.find((p) => p.id === productId);
+  const variant = store.variants.find((v) => v.id === variantId);
+  if (product) {
+    product.reviewStatus = status;
+    if (reason) product.reviewReason = reason;
+    product.updatedAt = Date.now();
+  }
+  if (variant) {
+    variant.reviewStatus = status;
+  }
+  saveLocalStore(store);
+  try {
+    if (product) await setDoc(doc(db, "products", product.id), product);
+    if (variant) await setDoc(doc(db, "productVariants", variant.id), variant);
+  } catch (e) {
+    console.warn("Firestore sync review status error:", e);
+  }
 }
 
 export function getSuppliers(): Supplier[] {

@@ -588,55 +588,96 @@ export function renderTransferDispatchNoteHTML(
   `;
 }
 
-// ── 6. THERMAL BARCODE LABELS (50x30mm vector thermal sticker & A4 Sheet) ───────
+// ── 6. THERMAL BARCODE LABELS (50x30mm, 50x25mm, 40x30mm & A4 Sheet) ───────
+export type BarcodeLabelSize = "50x30mm" | "50x25mm" | "40x30mm";
+
 export function renderSingleThermalBarcodeLabel(
   variant: ProductVariant,
-  outletName: string = "APEX FOOTWEAR"
+  outletName: string = "APEX FOOTWEAR",
+  format: BarcodeLabelSize = "50x30mm"
 ): string {
+  let widthMm = "50mm";
+  let heightMm = "30mm";
+  let barcodeHeight = 24;
+  let barcodeWidth = 1.4;
+  let storeFontSize = "6.5pt";
+  let brandFontSize = "7.5pt";
+  let nameFontSize = "7pt";
+  let attrFontSize = "6.5pt";
+  let sizeBadgeFontSize = "7.5pt";
+  let priceFontSize = "9pt";
+  let padding = "1.6mm 2mm";
+
+  if (format === "50x25mm") {
+    widthMm = "50mm";
+    heightMm = "25mm";
+    barcodeHeight = 18;
+    barcodeWidth = 1.35;
+    storeFontSize = "5.5pt";
+    brandFontSize = "6.5pt";
+    nameFontSize = "6.5pt";
+    attrFontSize = "6pt";
+    sizeBadgeFontSize = "6.5pt";
+    priceFontSize = "8pt";
+    padding = "1.2mm 1.8mm";
+  } else if (format === "40x30mm") {
+    widthMm = "40mm";
+    heightMm = "30mm";
+    barcodeHeight = 22;
+    barcodeWidth = 1.15;
+    storeFontSize = "5.5pt";
+    brandFontSize = "6.5pt";
+    nameFontSize = "6.5pt";
+    attrFontSize = "6pt";
+    sizeBadgeFontSize = "6.5pt";
+    priceFontSize = "8pt";
+    padding = "1.4mm 1.6mm";
+  }
+
   const barcodeSVG = generateBarcodeSVG(variant.barcode, {
-    height: 28,
-    width: 1.5,
+    height: barcodeHeight,
+    width: barcodeWidth,
     displayValue: false,
     margin: 0,
   });
 
   return `
-    <div class="thermal-barcode-label-item" style="width: 50mm; height: 30mm; max-width: 50mm; max-height: 30mm; border: 1px solid #111; padding: 1.8mm 2.2mm; box-sizing: border-box; background: #fff; page-break-after: always; break-after: page; display: flex; flex-direction: column; justify-content: space-between; margin: 0 auto; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <div class="thermal-barcode-label-item" style="width: ${widthMm}; height: ${heightMm}; max-width: ${widthMm}; max-height: ${heightMm}; border: 1px solid #111; padding: ${padding}; box-sizing: border-box; background: #fff; page-break-after: always; break-after: page; display: flex; flex-direction: column; justify-content: space-between; margin: 0 auto; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       <!-- Store Header & Brand -->
-      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #111; padding-bottom: 1.5px; line-height: 1;">
-        <span style="font-size: 6.5pt; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: #111;">${outletName}</span>
-        <span style="font-size: 7.5pt; font-weight: 900; text-transform: uppercase; color: #000;">${variant.brandNameCache || "BRAND"}</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #111; padding-bottom: 1px; line-height: 1;">
+        <span style="font-size: ${storeFontSize}; font-weight: 800; letter-spacing: 0.3px; text-transform: uppercase; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%;">${outletName}</span>
+        <span style="font-size: ${brandFontSize}; font-weight: 900; text-transform: uppercase; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42%; text-align: right;">${variant.brandNameCache || "BRAND"}</span>
       </div>
 
       <!-- Product Name -->
-      <div style="font-size: 7pt; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; color: #000; text-align: left; line-height: 1.1;">
+      <div style="font-size: ${nameFontSize}; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; color: #000; text-align: left; line-height: 1.1;">
         ${variant.productNameCache}
       </div>
 
       <!-- Attributes: Color & Size -->
-      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 6.5pt; margin-top: 1px; line-height: 1.1;">
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: ${attrFontSize}; margin-top: 1px; line-height: 1.1;">
         <span style="color: #222; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;">
           COL: <strong>${variant.colorNameCache}</strong>
         </span>
-        <span style="font-weight: 900; font-size: 7.5pt; background: #000; color: #fff; padding: 1px 4px; border-radius: 2px; white-space: nowrap;">
+        <span style="font-weight: 900; font-size: ${sizeBadgeFontSize}; background: #000; color: #fff; padding: 1px 3px; border-radius: 2px; white-space: nowrap;">
           SIZE: ${variant.sizeLabelCache}
         </span>
       </div>
 
       <!-- Price -->
       <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 1px; line-height: 1.1;">
-        <span style="font-size: 5.5pt; font-weight: 700; color: #444; text-transform: uppercase;">MRP (INCL. TAXES)</span>
-        <span style="font-size: 9pt; font-weight: 900; color: #000; letter-spacing: -0.3px;">${formatCurrency(variant.sellingPrice)}</span>
+        <span style="font-size: 5pt; font-weight: 700; color: #444; text-transform: uppercase;">MRP (INCL. TAXES)</span>
+        <span style="font-size: ${priceFontSize}; font-weight: 900; color: #000; letter-spacing: -0.3px;">${formatCurrency(variant.sellingPrice)}</span>
       </div>
 
       <!-- Vector Barcode & Digits -->
       <div style="text-align: center; margin: 0 auto; width: 100%; line-height: 1;">
-        <div style="display: flex; justify-content: center; align-items: center; max-height: 28px; width: 100%; overflow: hidden;">
+        <div style="display: flex; justify-content: center; align-items: center; max-height: ${barcodeHeight}px; width: 100%; overflow: hidden;">
           ${barcodeSVG}
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-size: 6.5pt; font-weight: 800; margin-top: 1px; color: #000;">
-          <span>SKU: ${variant.sku}</span>
-          <span style="letter-spacing: 1px;">${variant.barcode}</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-size: 5.5pt; font-weight: 800; margin-top: 1px; color: #000;">
+          <span>${variant.sku}</span>
+          <span style="letter-spacing: 0.5px;">${variant.barcode}</span>
         </div>
       </div>
     </div>
@@ -646,9 +687,10 @@ export function renderSingleThermalBarcodeLabel(
 export function renderThermalBarcodeLabelHTML(
   variant: ProductVariant,
   copies: number = 1,
-  outletName: string = "APEX FOOTWEAR"
+  outletName: string = "APEX FOOTWEAR",
+  format: BarcodeLabelSize = "50x30mm"
 ): string {
-  const singleLabel = renderSingleThermalBarcodeLabel(variant, outletName);
+  const singleLabel = renderSingleThermalBarcodeLabel(variant, outletName, format);
   return `
     <div class="thermal-barcode-label-container" style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
       ${Array.from({ length: copies }).map(() => singleLabel).join("")}
@@ -658,11 +700,12 @@ export function renderThermalBarcodeLabelHTML(
 
 export function renderBatchThermalBarcodeLabelsHTML(
   items: { variant: ProductVariant; copies: number }[],
-  outletName: string = "APEX FOOTWEAR"
+  outletName: string = "APEX FOOTWEAR",
+  format: BarcodeLabelSize = "50x30mm"
 ): string {
   const labelHTMLs: string[] = [];
   items.forEach((item) => {
-    const single = renderSingleThermalBarcodeLabel(item.variant, outletName);
+    const single = renderSingleThermalBarcodeLabel(item.variant, outletName, format);
     for (let i = 0; i < item.copies; i++) {
       labelHTMLs.push(single);
     }

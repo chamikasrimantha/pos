@@ -5,12 +5,16 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useApp } from "@/context/AppContext";
 import {
   getVariants,
+  getProducts,
+  getCategories,
   getInventoryForShop,
   completeSale,
 } from "@/lib/firestore-service";
 import { formatCurrency, renderSaleReceiptHTML } from "@/lib/receipt-generator";
-import { ProductVariant, PaymentEntry, PaymentMethod } from "@/types";
+import { Product, ProductVariant, PaymentEntry, PaymentMethod, ProductType } from "@/types";
+import { can } from "@/lib/permissions";
 import { CameraScannerModal } from "@/components/common/CameraScannerModal";
+import { QuickAddProductModal } from "@/components/products/QuickAddProductModal";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanSuccessBeep, playScanErrorBeep } from "@/lib/audio-feedback";
 import {
@@ -19,6 +23,7 @@ import {
   ShoppingCart,
   Trash2,
   Plus,
+  PlusCircle,
   Minus,
   CreditCard,
   Banknote,
@@ -59,7 +64,9 @@ export function PosView() {
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedProductType, setSelectedProductType] = useState<"ALL" | ProductType>("ALL");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -86,7 +93,7 @@ export function PosView() {
     );
 
     if (!found) {
-      showToast(`No shoe variant matched barcode: ${trimmed}`, "error");
+      showToast(`No item variant matched barcode: ${trimmed}`, "error");
       playScanErrorBeep();
       setBarcodeInput("");
       return;
@@ -114,9 +121,20 @@ export function PosView() {
     }
   }, [isPaymentModalOpen, isCameraScannerOpen, selectedCategory]);
 
-  // Load variants and active shop inventory
+  // Load products, variants and active shop inventory
+  const products = useMemo(() => getProducts(), [dataVersion]);
+  const allCategories = useMemo(() => getCategories(), [dataVersion]);
   const variants = useMemo(() => getVariants(), [dataVersion]);
   const inventoryList = useMemo(() => getInventoryForShop(activeShop.id), [activeShop.id, dataVersion]);
+
+  // Product map: productId -> Product
+  const productMap = useMemo(() => {
+    const map: Record<string, Product> = {};
+    products.forEach((p) => {
+      map[p.id] = p;
+    });
+    return map;
+  }, [products]);
 
   // Inventory lookup map: variantId -> quantityOnHand
   const stockMap = useMemo(() => {
@@ -127,21 +145,28 @@ export function PosView() {
     return map;
   }, [inventoryList]);
 
-  // Categories list
+  // Categories list dynamically filtered by selected product type
   const categories = useMemo(() => {
-    return [
-      { id: "ALL", name: "All Footwear" },
-      { id: "cat_formal_men", name: "Men's Formal" },
-      { id: "cat_sports", name: "Sports & Running" },
-      { id: "cat_casual", name: "Casual & Sneakers" },
-      { id: "cat_heels_women", name: "Women's Heels" },
-      { id: "cat_flats_women", name: "Women's Flats" },
-    ];
-  }, []);
+    let list = allCategories;
+    if (selectedProductType !== "ALL") {
+      list = list.filter((c) => !c.productType || c.productType === selectedProductType);
+    }
+    const allLabel =
+      selectedProductType === "BAG"
+        ? "All Bags"
+        : selectedProductType === "FOOTWEAR"
+        ? "All Footwear"
+        : "All Items";
+    return [{ id: "ALL", name: allLabel }, ...list];
+  }, [allCategories, selectedProductType]);
 
   // Filtered variants
   const filteredVariants = useMemo(() => {
     return variants.filter((v) => {
+      if (selectedProductType !== "ALL" && (v.productType || "FOOTWEAR") !== selectedProductType) {
+        return false;
+      }
+
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !q ||
@@ -152,16 +177,12 @@ export function PosView() {
         v.sizeLabelCache.toLowerCase().includes(q) ||
         v.colorNameCache.toLowerCase().includes(q);
 
-      const matchesCat =
-        selectedCategory === "ALL" ||
-        (selectedCategory === "cat_formal_men" && (v.productNameCache.includes("Oxford") || v.productNameCache.includes("Loafer"))) ||
-        (selectedCategory === "cat_sports" && v.productNameCache.includes("Air Max")) ||
-        (selectedCategory === "cat_casual" && (v.productNameCache.includes("Samba") || v.productNameCache.includes("Retro"))) ||
-        (selectedCategory === "cat_heels_women" && v.productNameCache.includes("Pump"));
+      const prod = productMap[v.productId];
+      const matchesCat = selectedCategory === "ALL" || prod?.categoryId === selectedCategory;
 
       return matchesSearch && matchesCat && v.active;
     });
-  }, [variants, searchQuery, selectedCategory]);
+  }, [variants, searchQuery, selectedCategory, selectedProductType, productMap]);
 
   // Cart calculations
   const cartSubtotal = useMemo(() => {
@@ -179,12 +200,12 @@ export function PosView() {
     processBarcode(barcodeInput);
   };
 
-  const addToCart = (variant: ProductVariant) => {
-    const onHand = stockMap[variant.id] || 0;
+  const addToCart = (variant: ProductVariant, force = false) => {
+    const onHand = force ? Math.max(1, stockMap[variant.id] || 1) : (stockMap[variant.id] || 0);
     const existing = cart.find((i) => i.variant.id === variant.id);
     const existingQty = existing ? existing.quantity : 0;
 
-    if (existingQty + 1 > onHand) {
+    if (!force && existingQty + 1 > onHand) {
       showToast(`Stock limit reached for ${variant.productNameCache}. (Available: ${onHand})`, "error");
       playScanErrorBeep();
       return;
@@ -449,6 +470,65 @@ export function PosView() {
               </button>
             )}
           </div>
+
+          {can(currentUser, "products.quick_add") && (
+            <button
+              type="button"
+              onClick={() => setIsQuickAddOpen(true)}
+              className="btn btn-primary"
+              title="Quick Add new product at counter"
+              style={{
+                height: "48px",
+                padding: "0 14px",
+                borderRadius: "var(--radius-control)",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontWeight: "700",
+                fontSize: "13px",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              <PlusCircle size={16} />
+              <span>Quick Add</span>
+            </button>
+          )}
+        </div>
+
+        {/* Product Type filter pills */}
+        <div style={{ display: "flex", gap: "6px", padding: "0 16px 8px", alignItems: "center" }}>
+          {[
+            { id: "ALL", label: "All Items" },
+            { id: "FOOTWEAR", label: "👟 Footwear" },
+            { id: "BAG", label: "🎒 Bags" },
+          ].map((t) => {
+            const isSel = selectedProductType === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  setSelectedProductType(t.id as any);
+                  setSelectedCategory("ALL");
+                }}
+                style={{
+                  height: "32px",
+                  padding: "0 12px",
+                  borderRadius: "9999px",
+                  fontSize: "12px",
+                  fontWeight: isSel ? 700 : 500,
+                  background: isSel ? "var(--primary)" : "var(--surface)",
+                  color: isSel ? "#fff" : "var(--ink-2)",
+                  border: isSel ? "1px solid var(--primary)" : "1px solid var(--line)",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Category tabs */}
@@ -1059,6 +1139,18 @@ export function PosView() {
         }}
         title="Scan Footwear Barcode"
       />
+
+      {/* Quick Add Product Modal */}
+      {isQuickAddOpen && (
+        <QuickAddProductModal
+          isOpen={isQuickAddOpen}
+          onClose={() => setIsQuickAddOpen(false)}
+          initialProductType={selectedProductType === "BAG" ? "BAG" : "FOOTWEAR"}
+          onProductCreated={({ product, variant }) => {
+            addToCart(variant, true);
+          }}
+        />
+      )}
     </div>
   );
 }
