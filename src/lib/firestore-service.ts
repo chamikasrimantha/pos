@@ -189,11 +189,19 @@ function cleanManagerUsers(store: LocalStoreState): boolean {
   return changed;
 }
 
+let nodeStore: LocalStoreState | null = null;
+
+export function resetLocalStoreForTesting() {
+  nodeStore = null;
+}
+
 function loadLocalStore(): LocalStoreState {
   if (typeof window === "undefined") {
-    const init = getInitialStore();
-    cleanManagerUsers(init);
-    return init;
+    if (!nodeStore) {
+      nodeStore = getInitialStore();
+      cleanManagerUsers(nodeStore);
+    }
+    return nodeStore;
   }
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -269,7 +277,10 @@ function loadLocalStore(): LocalStoreState {
 }
 
 function saveLocalStore(state: LocalStoreState) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") {
+    nodeStore = state;
+    return;
+  }
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
   } catch (err) {
@@ -818,6 +829,9 @@ export async function completeSale(params: {
     variant: ProductVariant;
     quantity: number;
     unitPrice: number;
+    listPrice?: number;
+    priceOverridden?: boolean;
+    priceOverrideReason?: string;
     discount: number;
     lineTotal: number;
   }[];
@@ -847,7 +861,31 @@ export async function completeSale(params: {
     }
   }
 
-  // 2. Validate stock sufficiency for all cart items
+  // 2. Validate price floors (Section 4.5 / Acceptance X7)
+  const settings = store.settings || DEFAULT_SETTINGS;
+  const floorMode = settings.priceFloorMode || "NONE";
+  const floorValue = settings.priceFloorValue || 0;
+
+  for (const item of params.items) {
+    const listPrice = item.listPrice !== undefined ? item.listPrice : item.variant.sellingPrice;
+    const isOverridden = item.priceOverridden || item.unitPrice !== listPrice;
+
+    if (isOverridden) {
+      if (floorMode === "PERCENT_OF_LIST" && floorValue > 0) {
+        const minPrice = (listPrice * floorValue) / 100;
+        if (item.unitPrice < minPrice - 0.01) {
+          throw new Error("This price is too low.");
+        }
+      } else if (floorMode === "COST") {
+        const costPrice = item.variant.referenceCostPrice || 0;
+        if (item.unitPrice < costPrice) {
+          throw new Error("This price is too low.");
+        }
+      }
+    }
+  }
+
+  // 3. Validate stock sufficiency for all cart items
   for (const item of params.items) {
     const invKey = `${params.shopId}_${item.variant.id}`;
     const currentOnHand = store.inventory[invKey]?.quantityOnHand || 0;
@@ -898,7 +936,10 @@ export async function completeSale(params: {
     store.inventory[invKey].quantityOnHand = afterQty;
     store.inventory[invKey].lastMovementAt = Date.now();
 
-    const saleItemId = `si_${Date.now()}_${item.variant.id}`;
+    const listPrice = item.listPrice !== undefined ? item.listPrice : item.variant.sellingPrice;
+    const isOverridden = item.priceOverridden !== undefined ? item.priceOverridden : (item.unitPrice !== listPrice);
+
+    const saleItemId = `si_${Date.now()}_${item.variant.id}_${Math.floor(Math.random() * 1000)}`;
     const sItem: SaleItem = {
       id: saleItemId,
       saleId,
@@ -910,11 +951,31 @@ export async function completeSale(params: {
       returnedQuantity: 0,
       unitSellingPrice: item.unitPrice,
       unitCostPrice: item.variant.referenceCostPrice,
+      listPrice,
+      priceOverridden: isOverridden,
+      priceOverrideReason: item.priceOverrideReason,
       discount: item.discount,
       lineTotal: item.lineTotal,
       variantDescriptionCache: `${item.variant.productNameCache} - ${item.variant.colorNameCache} - ${item.variant.sizeLabelCache}`,
     };
     createdItems.push(sItem);
+
+    if (isOverridden) {
+      logAuditAction(store, {
+        userId: params.cashierId,
+        userEmailCache: params.cashierName,
+        action: "PRICE_OVERRIDE",
+        entityType: "sale",
+        entityId: saleId,
+        before: { listPrice },
+        after: {
+          unitSellingPrice: item.unitPrice,
+          quantity: item.quantity,
+          reason: item.priceOverrideReason || "Price overridden at POS counter",
+        },
+        reason: `Price override on ${item.variant.productNameCache}: catalogue Rs. ${listPrice}, charged Rs. ${item.unitPrice}`,
+      });
+    }
 
     const movement: StockMovement = {
       id: `mvt_${Date.now()}_${item.variant.id}`,

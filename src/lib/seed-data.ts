@@ -30,6 +30,10 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   barcodeFormat: "EAN13",
   currencySymbol: "Rs.",
   timeZone: "Asia/Colombo",
+  scanPriceDialog: true,
+  priceFloorMode: "NONE",
+  priceFloorValue: 0,
+  priceOverrideReasonRequired: false,
 };
 
 export const SEED_SHOPS: Shop[] = [

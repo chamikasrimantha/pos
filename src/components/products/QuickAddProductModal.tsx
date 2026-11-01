@@ -20,6 +20,7 @@ interface QuickAddProductModalProps {
   onClose: () => void;
   onProductCreated?: (created: { product: Product; variant: ProductVariant }) => void;
   initialProductType?: ProductType;
+  initialBarcode?: string;
 }
 
 export function QuickAddProductModal({
@@ -27,6 +28,7 @@ export function QuickAddProductModal({
   onClose,
   onProductCreated,
   initialProductType = "FOOTWEAR",
+  initialBarcode,
 }: QuickAddProductModalProps) {
   const { currentUser, activeShop, refreshData } = useApp();
 
@@ -39,7 +41,7 @@ export function QuickAddProductModal({
   const [sellingPrice, setSellingPrice] = useState("");
   const [referenceCostPrice, setReferenceCostPrice] = useState("");
   const [startingQuantity, setStartingQuantity] = useState("0");
-  const [barcode, setBarcode] = useState("");
+  const [barcode, setBarcode] = useState(initialBarcode || "");
   const [sku, setSku] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);

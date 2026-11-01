@@ -15,6 +15,9 @@ import { Product, ProductVariant, PaymentEntry, PaymentMethod, ProductType } fro
 import { can } from "@/lib/permissions";
 import { CameraScannerModal } from "@/components/common/CameraScannerModal";
 import { QuickAddProductModal } from "@/components/products/QuickAddProductModal";
+import { ScanPriceDialog, ScanPriceDialogItem } from "./ScanPriceDialog";
+import { LinePriceEditorModal, LinePriceEditorResult } from "./LinePriceEditorModal";
+import { UnknownBarcodeModal } from "./UnknownBarcodeModal";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanSuccessBeep, playScanErrorBeep } from "@/lib/audio-feedback";
 import {
@@ -37,12 +40,17 @@ import {
   ChevronRight,
   Volume2,
   VolumeX,
+  Edit3,
+  Tag,
 } from "lucide-react";
 
 interface CartItem {
   variant: ProductVariant;
   quantity: number;
+  listPrice: number;
   unitPrice: number;
+  priceOverridden: boolean;
+  priceOverrideReason?: string;
   discount: number;
   lineTotal: number;
 }
@@ -67,6 +75,19 @@ export function PosView() {
   const [selectedProductType, setSelectedProductType] = useState<"ALL" | ProductType>("ALL");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [quickAddBarcodePrefill, setQuickAddBarcodePrefill] = useState<string | undefined>(undefined);
+
+  // Scan Dialog & Manual Price states (Section 4.3)
+  const [askPriceOnScan, setAskPriceOnScan] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem("pos_ask_price_on_scan");
+    return stored !== null ? stored === "true" : true;
+  });
+  const [scanPopupItem, setScanPopupItem] = useState<ScanPriceDialogItem | null>(null);
+  const [scanQueue, setScanQueue] = useState<ProductVariant[]>([]);
+  const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
+  const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
+
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -81,6 +102,16 @@ export function PosView() {
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
+  const toggleAskPriceOnScan = () => {
+    setAskPriceOnScan((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("pos_ask_price_on_scan", String(next));
+      }
+      return next;
+    });
+  };
+
   // Unified barcode processor with stock validation and sound feedback
   const processBarcode = (rawCode: string) => {
     const trimmed = rawCode.trim();
@@ -93,13 +124,41 @@ export function PosView() {
     );
 
     if (!found) {
-      showToast(`No item variant matched barcode: ${trimmed}`, "error");
       playScanErrorBeep();
+      setUnknownBarcode(trimmed);
       setBarcodeInput("");
       return;
     }
 
-    addToCart(found);
+    if (!askPriceOnScan) {
+      addToCartWithPrice(found, found.sellingPrice, 1);
+      setBarcodeInput("");
+      return;
+    }
+
+    // If scan dialog is already open
+    if (scanPopupItem) {
+      if (scanPopupItem.variant.id === found.id) {
+        // Increment quantity in current popup (Acceptance X5)
+        setScanPopupItem((prev) => (prev ? { ...prev, quantity: prev.quantity + 1 } : null));
+        playScanSuccessBeep();
+      } else {
+        // Enqueue next variant
+        setScanQueue((prev) => [...prev, found]);
+        playScanSuccessBeep();
+        showToast(`Queued ${found.productNameCache} (${found.sizeLabelCache})`, "info");
+      }
+    } else {
+      // Open scan popup
+      setScanPopupItem({
+        variant: found,
+        quantity: 1,
+        prices: [found.sellingPrice],
+        isDifferentPerPair: false,
+      });
+      playScanSuccessBeep();
+    }
+
     setBarcodeInput("");
   };
 
@@ -113,13 +172,13 @@ export function PosView() {
 
   // Auto refocus barcode input after modal dismissal or category change
   useEffect(() => {
-    if (!isPaymentModalOpen && !isCameraScannerOpen) {
+    if (!isPaymentModalOpen && !isCameraScannerOpen && !scanPopupItem && !editingCartItem && !unknownBarcode) {
       const timer = setTimeout(() => {
         barcodeInputRef.current?.focus();
       }, 60);
       return () => clearTimeout(timer);
     }
-  }, [isPaymentModalOpen, isCameraScannerOpen, selectedCategory]);
+  }, [isPaymentModalOpen, isCameraScannerOpen, scanPopupItem, editingCartItem, unknownBarcode, selectedCategory]);
 
   // Load products, variants and active shop inventory
   const products = useMemo(() => getProducts(), [dataVersion]);
@@ -200,65 +259,178 @@ export function PosView() {
     processBarcode(barcodeInput);
   };
 
-  const addToCart = (variant: ProductVariant, force = false) => {
-    const onHand = force ? Math.max(1, stockMap[variant.id] || 1) : (stockMap[variant.id] || 0);
-    const existing = cart.find((i) => i.variant.id === variant.id);
-    const existingQty = existing ? existing.quantity : 0;
+  const addToCartWithPrice = (
+    variant: ProductVariant,
+    price: number,
+    qty = 1,
+    reason?: string,
+    force = false
+  ) => {
+    const onHand = force ? Math.max(qty, stockMap[variant.id] || qty) : (stockMap[variant.id] || 0);
+    const currentVariantQty = cart
+      .filter((i) => i.variant.id === variant.id)
+      .reduce((sum, i) => sum + i.quantity, 0);
 
-    if (!force && existingQty + 1 > onHand) {
+    if (!force && currentVariantQty + qty > onHand) {
       showToast(`Stock limit reached for ${variant.productNameCache}. (Available: ${onHand})`, "error");
       playScanErrorBeep();
       return;
     }
 
     playScanSuccessBeep();
+    const listPrice = variant.sellingPrice;
+    const isOverridden = price !== listPrice;
 
-    if (existing) {
-      setCart((prev) =>
-        prev.map((i) =>
-          i.variant.id === variant.id
-            ? {
-                ...i,
-                quantity: i.quantity + 1,
-                lineTotal: (i.quantity + 1) * i.unitPrice - i.discount,
-              }
-            : i
-        )
+    setCart((prev) => {
+      const existingIdx = prev.findIndex(
+        (i) => i.variant.id === variant.id && i.unitPrice === price
       );
-    } else {
-      setCart((prev) => [
+
+      if (existingIdx !== -1) {
+        const updated = [...prev];
+        const existing = updated[existingIdx];
+        const newQty = existing.quantity + qty;
+        updated[existingIdx] = {
+          ...existing,
+          quantity: newQty,
+          lineTotal: newQty * existing.unitPrice - existing.discount,
+          priceOverrideReason: reason || existing.priceOverrideReason,
+        };
+        return updated;
+      }
+
+      return [
         ...prev,
         {
           variant,
-          quantity: 1,
-          unitPrice: variant.sellingPrice,
+          quantity: qty,
+          listPrice,
+          unitPrice: price,
+          priceOverridden: isOverridden,
+          priceOverrideReason: reason,
           discount: 0,
-          lineTotal: variant.sellingPrice,
+          lineTotal: qty * price,
         },
-      ]);
-    }
+      ];
+    });
 
     setLastAddedVariantId(variant.id);
     setTimeout(() => setLastAddedVariantId(null), 350);
-    showToast(`Added ${variant.productNameCache} (${variant.sizeLabelCache}) to cart`, "success");
+    showToast(`Added ${variant.productNameCache} (${variant.sizeLabelCache}) at ${formatCurrency(price)}`, "success");
 
     setTimeout(() => {
       barcodeInputRef.current?.focus();
     }, 50);
   };
 
-  const updateQuantity = (variantId: string, delta: number) => {
+  // Handle Scan Dialog Confirm
+  const handleScanDialogConfirm = (result: {
+    variant: ProductVariant;
+    quantitiesAndPrices: { price: number; quantity: number; reason?: string }[];
+  }) => {
+    result.quantitiesAndPrices.forEach((qp) => {
+      addToCartWithPrice(result.variant, qp.price, qp.quantity, qp.reason);
+    });
+
+    setScanPopupItem(null);
+
+    // Pop next variant from scanQueue if any
+    if (scanQueue.length > 0) {
+      const nextVariant = scanQueue[0];
+      setScanQueue((prev) => prev.slice(1));
+      setTimeout(() => {
+        setScanPopupItem({
+          variant: nextVariant,
+          quantity: 1,
+          prices: [nextVariant.sellingPrice],
+          isDifferentPerPair: false,
+        });
+      }, 50);
+    }
+  };
+
+  // Handle Scan Dialog Cancel
+  const handleScanDialogCancel = () => {
+    setScanPopupItem(null);
+    if (scanQueue.length > 0) {
+      const nextVariant = scanQueue[0];
+      setScanQueue((prev) => prev.slice(1));
+      setTimeout(() => {
+        setScanPopupItem({
+          variant: nextVariant,
+          quantity: 1,
+          prices: [nextVariant.sellingPrice],
+          isDifferentPerPair: false,
+        });
+      }, 50);
+    }
+  };
+
+  // Handle line price editor apply (Acceptance X3, X4)
+  const handleApplyLinePriceEdit = (result: LinePriceEditorResult) => {
+    setCart((prev) => {
+      const remaining = prev.filter(
+        (i) => !(i.variant.id === result.variantId && i.unitPrice === result.originalUnitPrice)
+      );
+
+      const targetVariant = variants.find((v) => v.id === result.variantId);
+      if (!targetVariant) return remaining;
+
+      let nextCart = [...remaining];
+
+      result.newLines.forEach((nl) => {
+        const listPrice = targetVariant.sellingPrice;
+        const isOverridden = nl.price !== listPrice;
+        const existingIdx = nextCart.findIndex(
+          (i) => i.variant.id === targetVariant.id && i.unitPrice === nl.price
+        );
+
+        if (existingIdx !== -1) {
+          const ex = nextCart[existingIdx];
+          const newQty = ex.quantity + nl.quantity;
+          nextCart[existingIdx] = {
+            ...ex,
+            quantity: newQty,
+            lineTotal: newQty * ex.unitPrice - ex.discount,
+            priceOverrideReason: nl.reason || ex.priceOverrideReason,
+          };
+        } else {
+          nextCart.push({
+            variant: targetVariant,
+            quantity: nl.quantity,
+            listPrice,
+            unitPrice: nl.price,
+            priceOverridden: isOverridden,
+            priceOverrideReason: nl.reason,
+            discount: 0,
+            lineTotal: nl.quantity * nl.price,
+          });
+        }
+      });
+
+      return nextCart;
+    });
+
+    showToast("Updated cart line prices", "success");
+  };
+
+  const updateQuantity = (variantId: string, unitPrice: number, delta: number) => {
     const onHand = stockMap[variantId] || 0;
+    const currentTotalQty = cart
+      .filter((i) => i.variant.id === variantId)
+      .reduce((sum, i) => sum + i.quantity, 0);
+
+    if (delta > 0 && currentTotalQty + delta > onHand) {
+      showToast(`Cannot exceed shop stock (${onHand} available)`, "error");
+      return;
+    }
+
     setCart((prev) =>
       prev
         .map((i) => {
-          if (i.variant.id !== variantId) return i;
+          if (i.variant.id !== variantId || i.unitPrice !== unitPrice) return i;
           const newQty = i.quantity + delta;
           if (newQty <= 0) return null;
-          if (newQty > onHand) {
-            showToast(`Cannot exceed shop stock (${onHand} available)`, "error");
-            return i;
-          }
           return {
             ...i,
             quantity: newQty,
@@ -269,8 +441,8 @@ export function PosView() {
     );
   };
 
-  const removeItem = (variantId: string) => {
-    setCart((prev) => prev.filter((i) => i.variant.id !== variantId));
+  const removeItem = (variantId: string, unitPrice: number) => {
+    setCart((prev) => prev.filter((i) => !(i.variant.id === variantId && i.unitPrice === unitPrice)));
   };
 
   const clearCart = () => {
@@ -318,6 +490,9 @@ export function PosView() {
           variant: c.variant,
           quantity: c.quantity,
           unitPrice: c.unitPrice,
+          listPrice: c.listPrice,
+          priceOverridden: c.priceOverridden,
+          priceOverrideReason: c.priceOverrideReason,
           discount: c.discount,
           lineTotal: c.lineTotal,
         })),
@@ -427,6 +602,30 @@ export function PosView() {
             >
               <Camera size={14} />
               <span style={{ fontSize: "12px" }}>Cam</span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleAskPriceOnScan}
+              title={
+                askPriceOnScan
+                  ? "Scan Price Popup: ON (click to add directly without asking price)"
+                  : "Scan Price Popup: OFF (click to ask price on scan)"
+              }
+              className={`btn btn-sm ${askPriceOnScan ? "btn-primary" : "btn-secondary"}`}
+              style={{
+                flexShrink: 0,
+                height: "32px",
+                padding: "0 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                fontSize: "11px",
+                fontWeight: "700",
+                borderRadius: "8px",
+              }}
+            >
+              <Tag size={12} />
+              <span>{askPriceOnScan ? "Ask Price: ON" : "Ask Price: OFF"}</span>
             </button>
           </form>
 
@@ -607,7 +806,7 @@ export function PosView() {
                       <button
                         className="btn btn-primary btn-sm"
                         disabled={isOut}
-                        onClick={(e) => { e.stopPropagation(); if (!isOut) addToCart(variant); }}
+                        onClick={(e) => { e.stopPropagation(); if (!isOut) addToCartWithPrice(variant, variant.sellingPrice, 1); }}
                         style={{ height: "44px" }}
                       >
                         <Plus size={14} /> Add
@@ -731,90 +930,133 @@ export function PosView() {
               </div>
             </div>
           ) : (
-            cart.map((item) => (
-              <div
-                key={item.variant.id}
-                className={`pos-cart-line ${lastAddedVariantId === item.variant.id ? "flash-highlight" : ""}`}
-              >
-                {/* Row 1: Product Name + Line Total */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "8px" }}>
-                  <div
-                    title={item.variant.productNameCache}
-                    style={{
-                      fontSize: "15px",
-                      fontWeight: 600,
-                      color: "var(--ink)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    {item.variant.productNameCache}
-                  </div>
-                  <div style={{ fontVariantNumeric: "tabular-nums", fontSize: "15px", fontWeight: 600, color: "var(--ink)", flexShrink: 0 }}>
-                    {formatCurrency(item.lineTotal)}
-                  </div>
-                </div>
-
-                {/* Row 2: Secondary text (Colour, Size, Unit Price) + Stepper & Remove */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: "13px", color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.variant.colorNameCache}, {item.variant.sizeLabelCache}
-                    </div>
-                    <div style={{ fontSize: "12px", color: "var(--ink-3)", fontVariantNumeric: "tabular-nums" }}>
-                      {formatCurrency(item.unitPrice)} each
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(item.variant.id, -1)}
-                      aria-label="Decrease quantity"
-                      className="cart-qty-btn"
-                    >
-                      <Minus size={14} />
-                    </button>
-                    <span style={{ width: "24px", textAlign: "center", fontSize: "14px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "var(--ink)" }}>
-                      {item.quantity}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(item.variant.id, 1)}
-                      aria-label="Increase quantity"
-                      className="cart-qty-btn"
-                    >
-                      <Plus size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeItem(item.variant.id)}
-                      aria-label="Remove item"
+            cart.map((item) => {
+              const lineKey = `${item.variant.id}_${item.unitPrice}`;
+              const isOverridden = item.priceOverridden || item.unitPrice !== item.listPrice;
+              return (
+                <div
+                  key={lineKey}
+                  className={`pos-cart-line ${lastAddedVariantId === item.variant.id ? "flash-highlight" : ""}`}
+                >
+                  {/* Row 1: Product Name + Line Total */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "8px" }}>
+                    <div
+                      title={item.variant.productNameCache}
                       style={{
-                        width: "36px",
-                        height: "36px",
-                        borderRadius: "var(--radius-control)",
-                        border: "none",
-                        background: "transparent",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "var(--ink-3)",
-                        marginLeft: "2px",
+                        fontSize: "15px",
+                        fontWeight: 600,
+                        color: "var(--ink)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        flex: 1,
+                        minWidth: 0,
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--danger)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--ink-3)")}
                     >
-                      <Trash2 size={15} />
-                    </button>
+                      {item.variant.productNameCache}
+                    </div>
+                    <div style={{ fontVariantNumeric: "tabular-nums", fontSize: "15px", fontWeight: 600, color: "var(--ink)", flexShrink: 0 }}>
+                      {formatCurrency(item.lineTotal)}
+                    </div>
+                  </div>
+
+                  {/* Row 2: Secondary text (Colour, Size, Unit Price, Overridden pill, Edit price button) + Stepper & Remove */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginTop: "2px" }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: "13px", color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {item.variant.colorNameCache}, {item.variant.sizeLabelCache}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                        <span style={{ fontSize: "12px", color: "var(--ink)", fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
+                          {formatCurrency(item.unitPrice)}
+                        </span>
+                        {isOverridden && (
+                          <>
+                            <span style={{ fontSize: "11px", color: "var(--ink-3)", textDecoration: "line-through" }}>
+                              {formatCurrency(item.listPrice)}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: "800",
+                                color: "#b45309",
+                                background: "#fef3c7",
+                                padding: "1px 5px",
+                                borderRadius: "4px",
+                              }}
+                            >
+                              Overridden
+                            </span>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setEditingCartItem(item)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "var(--primary)",
+                            fontSize: "11px",
+                            fontWeight: "700",
+                            cursor: "pointer",
+                            padding: "0 2px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "2px",
+                          }}
+                        >
+                          <Edit3 size={11} /> Edit price
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.variant.id, item.unitPrice, -1)}
+                        aria-label="Decrease quantity"
+                        className="cart-qty-btn"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span style={{ width: "24px", textAlign: "center", fontSize: "14px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "var(--ink)" }}>
+                        {item.quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.variant.id, item.unitPrice, 1)}
+                        aria-label="Increase quantity"
+                        className="cart-qty-btn"
+                      >
+                        <Plus size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.variant.id, item.unitPrice)}
+                        aria-label="Remove item"
+                        style={{
+                          width: "36px",
+                          height: "36px",
+                          borderRadius: "var(--radius-control)",
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "var(--ink-3)",
+                          marginLeft: "2px",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "var(--danger)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "var(--ink-3)")}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -897,15 +1139,7 @@ export function PosView() {
         isOpen={isCameraScannerOpen}
         onClose={() => setIsCameraScannerOpen(false)}
         onScan={(code) => {
-          const found = variants.find(
-            (v) => v.barcode === code || v.sku.toLowerCase() === code.toLowerCase()
-          );
-          if (found) {
-            addToCart(found);
-            showToast(`Scanned & added ${found.productNameCache} (${found.sizeLabelCache})`, "success");
-          } else {
-            showToast(`No shoe matched barcode: ${code}`, "error");
-          }
+          processBarcode(code);
         }}
       />
 
@@ -1140,14 +1374,68 @@ export function PosView() {
         title="Scan Footwear Barcode"
       />
 
+      {/* Scan Price Dialog (Section 4.3, Acceptance X1, X2, X3, X4, X5) */}
+      {scanPopupItem && (
+        <ScanPriceDialog
+          isOpen={Boolean(scanPopupItem)}
+          item={scanPopupItem}
+          stockOnHand={stockMap[scanPopupItem.variant.id] || 0}
+          queueCount={scanQueue.length}
+          onConfirm={handleScanDialogConfirm}
+          onCancel={handleScanDialogCancel}
+          onIncrementQuantity={() =>
+            setScanPopupItem((prev) => (prev ? { ...prev, quantity: prev.quantity + 1 } : null))
+          }
+          onDecrementQuantity={() =>
+            setScanPopupItem((prev) =>
+              prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : null
+            )
+          }
+        />
+      )}
+
+      {/* Cart Line Price Editor Modal (Section 4.2) */}
+      {editingCartItem && (
+        <LinePriceEditorModal
+          isOpen={Boolean(editingCartItem)}
+          variant={editingCartItem.variant}
+          currentQuantity={editingCartItem.quantity}
+          currentUnitPrice={editingCartItem.unitPrice}
+          onApply={handleApplyLinePriceEdit}
+          onClose={() => setEditingCartItem(null)}
+        />
+      )}
+
+      {/* Unknown Barcode Modal (Section 4.4, Acceptance X6) */}
+      {unknownBarcode && (
+        <UnknownBarcodeModal
+          isOpen={Boolean(unknownBarcode)}
+          barcode={unknownBarcode}
+          onOpenQuickAdd={(prefill) => {
+            setQuickAddBarcodePrefill(prefill);
+            setIsQuickAddOpen(true);
+            setUnknownBarcode(null);
+          }}
+          onBarcodeLinked={(variant) => {
+            addToCartWithPrice(variant, variant.sellingPrice, 1);
+            setUnknownBarcode(null);
+          }}
+          onClose={() => setUnknownBarcode(null)}
+        />
+      )}
+
       {/* Quick Add Product Modal */}
       {isQuickAddOpen && (
         <QuickAddProductModal
           isOpen={isQuickAddOpen}
-          onClose={() => setIsQuickAddOpen(false)}
+          onClose={() => {
+            setIsQuickAddOpen(false);
+            setQuickAddBarcodePrefill(undefined);
+          }}
           initialProductType={selectedProductType === "BAG" ? "BAG" : "FOOTWEAR"}
+          initialBarcode={quickAddBarcodePrefill}
           onProductCreated={({ product, variant }) => {
-            addToCart(variant, true);
+            addToCartWithPrice(variant, variant.sellingPrice, 1, undefined, true);
           }}
         />
       )}

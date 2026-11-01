@@ -268,6 +268,9 @@ export interface SaleItem {
   discount: number;
   lineTotal: number;
   variantDescriptionCache: string;
+  listPrice?: number;
+  priceOverridden?: boolean;
+  priceOverrideReason?: string;
 }
 
 export type ReturnType = "RETURN_REFUND" | "SIZE_EXCHANGE";
@@ -397,6 +400,9 @@ export interface PurchaseItem {
   unitCost: number;
   lineTotal: number;
   variantDescriptionCache: string;
+  listPrice?: number;
+  priceOverridden?: boolean;
+  priceOverrideReason?: string;
 }
 
 export interface Purchase {
@@ -500,6 +506,10 @@ export interface SystemSettings {
   barcodeFormat: "EAN13" | "CODE128";
   currencySymbol: string;
   timeZone: string; // "Asia/Colombo"
+  scanPriceDialog?: boolean;
+  priceFloorMode?: "NONE" | "PERCENT_OF_LIST" | "COST";
+  priceFloorValue?: number;
+  priceOverrideReasonRequired?: boolean;
 }
 
 export interface DailyCashSummary {
