@@ -23,6 +23,7 @@ export interface Shop {
 
 export interface UserProfile {
   uid: string;
+  id?: string;
   email: string;
   displayName: string;
   role: UserRole;
@@ -479,6 +480,10 @@ export interface Supplier {
   paymentTerms?: string;
   active: boolean;
   createdAt: number;
+  needsReview?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: number | null;
+  reviewNote?: string | null;
 }
 
 export interface PurchaseItem {
@@ -491,6 +496,10 @@ export interface PurchaseItem {
   listPrice?: number;
   priceOverridden?: boolean;
   priceOverrideReason?: string;
+  productType?: ProductType;
+  brandNameCache?: string;
+  colorNameCache?: string;
+  sizeLabelCache?: string;
 }
 
 export interface Purchase {
@@ -499,13 +508,31 @@ export interface Purchase {
   shopId: string;
   supplierId: string;
   supplierNameCache: string;
+  supplierBillNumber?: string;
   invoiceDate: number;
   totalAmount: number;
   status: "RECEIVED" | "CANCELLED";
   items: PurchaseItem[];
   receivedBy: string;
+  createdByNameCache?: string;
+  createdByRoleCache?: string;
   receivedAt: number;
   notes?: string;
+  paymentMethod?: "CASH" | "CHEQUE" | "CREDIT" | "BANK_TRANSFER" | "PARTIAL";
+  paidAmount?: number;
+  chequeDetails?: {
+    chequeNumber: string;
+    bankName: string;
+    chequeDate: number;
+  };
+  needsReview?: boolean;
+  costVarianceFlagged?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: number | null;
+  reviewNote?: string | null;
+  cancelledBy?: string | null;
+  cancelledAt?: number | null;
+  cancelReason?: string | null;
 }
 
 export interface SupplierTransaction {
@@ -549,6 +576,11 @@ export interface Cheque {
   notes?: string;
   history?: ChequeHistoryEntry[];
   createdAt: number;
+  purchaseId?: string;
+  purchaseNumber?: string;
+  needsReview?: boolean;
+  issuedBy?: string;
+  issuedByName?: string;
 }
 
 export interface SupplierPayment {
@@ -598,6 +630,9 @@ export interface SystemSettings {
   priceFloorMode?: "NONE" | "PERCENT_OF_LIST" | "COST";
   priceFloorValue?: number;
   priceOverrideReasonRequired?: boolean;
+  costVarianceThresholdPercent?: number;
+  warrantyMonthsFootwear?: number;
+  warrantyMonthsBag?: number;
 }
 
 export interface DailyCashSummary {

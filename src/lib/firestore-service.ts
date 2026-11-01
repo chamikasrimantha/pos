@@ -12,6 +12,7 @@ import { db } from "./firebase";
 import {
   Shop,
   UserProfile,
+  UserRole,
   Category,
   Brand,
   Color,
@@ -753,6 +754,83 @@ export async function updateProductReviewStatus(
 
 export function getSuppliers(): Supplier[] {
   return loadLocalStore().suppliers;
+}
+
+export function getSuppliersForUser(
+  callingUser?: UserProfile | { role: UserRole } | null
+): Partial<Supplier>[] {
+  const store = loadLocalStore();
+  const allSuppliers = store.suppliers.filter((s) => s.active !== false);
+  if (!callingUser || callingUser.role === "CASHIER") {
+    // Section 7.2: Cashiers see supplier name and phone only
+    return allSuppliers.map((s) => ({
+      id: s.id,
+      name: s.name,
+      phone: s.phone,
+      active: s.active,
+      needsReview: s.needsReview,
+    }));
+  }
+  return allSuppliers;
+}
+
+export async function addSupplier(params: {
+  name: string;
+  phone: string;
+  contactPerson?: string;
+  address?: string;
+  callingUser: UserProfile | { id?: string; role: UserRole; displayName?: string };
+}): Promise<Supplier> {
+  const store = loadLocalStore();
+  const nameNorm = params.name.trim().replace(/\s+/g, "").toLowerCase();
+  const phoneNorm = params.phone.trim().replace(/[\s\-\+]/g, "");
+
+  if (!nameNorm) throw new Error("Supplier name is required.");
+  if (!phoneNorm) throw new Error("Supplier phone number is required.");
+
+  const duplicate = store.suppliers.find((s) => {
+    const sName = s.name.trim().replace(/\s+/g, "").toLowerCase();
+    const sPhone = (s.phone || "").trim().replace(/[\s\-\+]/g, "");
+    return sName === nameNorm || (phoneNorm && sPhone === phoneNorm);
+  });
+
+  if (duplicate) {
+    throw new Error("A supplier with this name or phone number already exists.");
+  }
+
+  const supplierId = `sup_${Date.now()}`;
+  const supplier: Supplier = {
+    id: supplierId,
+    name: params.name.trim(),
+    phone: params.phone.trim(),
+    contactPerson: params.contactPerson?.trim() || undefined,
+    address: params.address?.trim() || undefined,
+    active: true,
+    createdAt: Date.now(),
+    needsReview: params.callingUser.role !== "SUPER_ADMIN",
+  };
+
+  store.suppliers.push(supplier);
+
+  logAuditAction(store, {
+    userId: (params.callingUser as any).id || (params.callingUser as any).uid || "system",
+    userEmailCache: params.callingUser.displayName || params.callingUser.role,
+    action: "SUPPLIER_CREATE",
+    entityType: "suppliers",
+    entityId: supplierId,
+    after: supplier,
+    reason: `Created new supplier ${supplier.name}${supplier.needsReview ? " (Needs review)" : ""}`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await setDoc(doc(db, "suppliers", supplierId), supplier);
+  } catch (e) {
+    console.warn("Firestore sync supplier error:", e);
+  }
+
+  return supplier;
 }
 
 export function getInventoryForShop(shopId: string): Inventory[] {
@@ -2953,18 +3031,44 @@ export async function approveStockCount(params: {
 }
 
 // ==========================================
-// 10. PURCHASING & SUPPLIER LEDGER
+// 10. PURCHASING & SUPPLIER LEDGER (WP7)
 // ==========================================
-export function getPurchases(shopId?: string): Purchase[] {
+export function getPurchases(
+  shopId?: string,
+  callingUser?: UserProfile | { role: UserRole; id?: string; displayName?: string } | null
+): Purchase[] {
   const store = loadLocalStore();
-  if (!shopId) return store.purchases.sort((a, b) => b.receivedAt - a.receivedAt);
-  return store.purchases.filter((p) => p.shopId === shopId).sort((a, b) => b.receivedAt - a.receivedAt);
+  let list = [...store.purchases];
+
+  if (shopId) {
+    list = list.filter((p) => p.shopId === shopId);
+  }
+
+  // Section 7.1 / U7: Cashiers see own bills only
+  if (callingUser && callingUser.role === "CASHIER") {
+    list = list.filter(
+      (p) =>
+        p.receivedBy === callingUser.id ||
+        p.createdByNameCache === callingUser.displayName ||
+        p.receivedBy === callingUser.displayName
+    );
+  }
+
+  return list.sort((a, b) => (b.invoiceDate || b.receivedAt) - (a.invoiceDate || a.receivedAt));
 }
 
-export function getSupplierLedger(supplierId: string): {
+export function getSupplierLedger(
+  supplierId: string,
+  callingUser?: UserProfile | { role: UserRole } | null
+): {
   transactions: SupplierTransaction[];
   outstandingBalance: number;
 } {
+  // Section 7.1 / U4: Cashiers cannot open or view supplier ledger
+  if (callingUser && callingUser.role === "CASHIER") {
+    throw new Error(ERROR_MESSAGES.PERMISSION_DENIED);
+  }
+
   const store = loadLocalStore();
   const txs = store.supplierTransactions
     .filter((t) => t.supplierId === supplierId)
@@ -2979,27 +3083,100 @@ export function getSupplierLedger(supplierId: string): {
   return { transactions: processed, outstandingBalance: balance };
 }
 
-export async function createPurchaseOrder(params: {
+export interface CreatePurchaseParams {
   shopId: string;
   supplierId: string;
-  items: { variant: ProductVariant; quantity: number; unitCost: number }[];
-  receivedBy: string;
+  supplierBillNumber?: string;
+  invoiceDate?: number;
+  items: {
+    variant: ProductVariant;
+    quantity: number;
+    unitCost: number;
+    listPrice?: number;
+  }[];
   notes?: string;
-}): Promise<Purchase> {
+  paymentMethod: "CASH" | "CHEQUE" | "CREDIT" | "BANK_TRANSFER" | "PARTIAL";
+  paidAmount?: number;
+  chequeDetails?: {
+    chequeNumber: string;
+    bankName: string;
+    chequeDate: number;
+  };
+  callingUser: UserProfile | { id: string; role: UserRole; displayName?: string; allowedShopIds?: string[] };
+}
+
+export async function createPurchase(params: CreatePurchaseParams): Promise<{ purchase: Purchase; cheque?: Cheque }> {
   const store = loadLocalStore();
   const supplier = store.suppliers.find((s) => s.id === params.supplierId);
   if (!supplier) throw new Error("Supplier not found");
+
+  const isSuperAdmin = params.callingUser.role === "SUPER_ADMIN";
+  const isCashier = params.callingUser.role === "CASHIER";
+
+  // Branch check: Cashier can only purchase for their allowed shop
+  if (!isSuperAdmin && params.callingUser.allowedShopIds && !params.callingUser.allowedShopIds.includes(params.shopId)) {
+    throw new Error(ERROR_MESSAGES.OUTLET_NOT_ALLOWED);
+  }
+
+  // Section 7.4 / U6: Cashiers can only choose Cash or Cheque
+  if (!isSuperAdmin && params.paymentMethod !== "CASH" && params.paymentMethod !== "CHEQUE") {
+    throw new Error("Cashiers can only purchase with Cash or Cheque.");
+  }
+
+  if (params.items.length === 0) {
+    throw new Error("Purchase must have at least one line item.");
+  }
+
+  // Duplicate cheque number check
+  if (params.paymentMethod === "CHEQUE") {
+    if (!params.chequeDetails?.chequeNumber || !params.chequeDetails?.bankName) {
+      throw new Error("Cheque number and bank name are required for cheque payment.");
+    }
+    const chqNorm = params.chequeDetails.chequeNumber.trim().toLowerCase();
+    const existing = store.cheques.some((c) => c.chequeNumber.trim().toLowerCase() === chqNorm);
+    if (existing) {
+      throw new Error("This cheque number is already used.");
+    }
+  }
 
   const purchaseNumber = getNextSequentialNumber("PUR", "purchase");
   const purchaseId = `pur_${Date.now()}`;
 
   const purchaseItems: PurchaseItem[] = [];
   let totalAmount = 0;
+  let costVarianceFlagged = false;
+  const varianceThreshold = (store.settings.costVarianceThresholdPercent || 25) / 100;
 
   for (const it of params.items) {
+    if (it.quantity <= 0) throw new Error("Quantity must be greater than zero.");
+    if (it.unitCost < 0) throw new Error("Unit cost cannot be negative.");
+
     const lineTotal = it.quantity * it.unitCost;
     totalAmount += lineTotal;
 
+    // Check cost variance against previous purchases of this variant
+    let previousCost: number | null = null;
+    for (const pastPur of store.purchases) {
+      if (pastPur.status !== "CANCELLED") {
+        const pastItem = pastPur.items.find((pi) => pi.variantId === it.variant.id);
+        if (pastItem && pastItem.unitCost > 0) {
+          previousCost = pastItem.unitCost;
+          break;
+        }
+      }
+    }
+    if (previousCost === null && it.variant.referenceCostPrice > 0) {
+      previousCost = it.variant.referenceCostPrice;
+    }
+
+    if (previousCost !== null && previousCost > 0) {
+      const diff = Math.abs(it.unitCost - previousCost) / previousCost;
+      if (diff > varianceThreshold) {
+        costVarianceFlagged = true;
+      }
+    }
+
+    // Inventory record & stock increment
     const invKey = `${params.shopId}_${it.variant.id}`;
     if (!store.inventory[invKey]) {
       store.inventory[invKey] = {
@@ -3024,11 +3201,16 @@ export async function createPurchaseOrder(params: {
       quantity: it.quantity,
       unitCost: it.unitCost,
       lineTotal,
-      variantDescriptionCache: `${it.variant.productNameCache} - ${it.variant.colorNameCache} - ${it.variant.sizeLabelCache}`,
+      variantDescriptionCache: `${it.variant.productNameCache} - ${it.variant.colorNameCache} (${it.variant.sizeLabelCache})`,
+      productType: it.variant.productType || "FOOTWEAR",
+      brandNameCache: it.variant.brandNameCache,
+      colorNameCache: it.variant.colorNameCache,
+      sizeLabelCache: it.variant.sizeLabelCache,
+      listPrice: it.variant.sellingPrice,
     });
 
     store.movements.push({
-      id: `mvt_${Date.now()}_pur_${it.variant.id}`,
+      id: `mvt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}_pur_${it.variant.id}`,
       shopId: params.shopId,
       variantId: it.variant.id,
       productId: it.variant.productId,
@@ -3039,10 +3221,18 @@ export async function createPurchaseOrder(params: {
       quantityAfter: afterQty,
       referenceType: "PURCHASE",
       referenceId: purchaseId,
-      userId: params.receivedBy,
+      userId: (params.callingUser as any).id || (params.callingUser as any).uid || "user",
       createdAt: Date.now(),
     });
   }
+
+  const needsReview = isCashier || costVarianceFlagged;
+  const paidAmount =
+    params.paymentMethod === "CASH" || params.paymentMethod === "BANK_TRANSFER"
+      ? totalAmount
+      : params.paymentMethod === "PARTIAL"
+      ? params.paidAmount || 0
+      : 0;
 
   const purchase: Purchase = {
     id: purchaseId,
@@ -3050,20 +3240,37 @@ export async function createPurchaseOrder(params: {
     shopId: params.shopId,
     supplierId: params.supplierId,
     supplierNameCache: supplier.name,
-    invoiceDate: Date.now(),
+    supplierBillNumber: params.supplierBillNumber?.trim() || undefined,
+    invoiceDate: params.invoiceDate || Date.now(),
     totalAmount,
     status: "RECEIVED",
     items: purchaseItems,
-    receivedBy: params.receivedBy,
+    receivedBy: (params.callingUser as any).id || (params.callingUser as any).uid || "user",
+    createdByNameCache: params.callingUser.displayName || params.callingUser.role,
+    createdByRoleCache: params.callingUser.role,
     receivedAt: Date.now(),
-    notes: params.notes,
+    notes: params.notes?.trim() || undefined,
+    paymentMethod: params.paymentMethod,
+    paidAmount,
+    chequeDetails: params.chequeDetails
+      ? {
+          chequeNumber: params.chequeDetails.chequeNumber.trim(),
+          bankName: params.chequeDetails.bankName.trim(),
+          chequeDate: params.chequeDetails.chequeDate,
+        }
+      : undefined,
+    needsReview,
+    costVarianceFlagged,
   };
 
-  const tx: SupplierTransaction = {
-    id: `stx_${Date.now()}`,
+  store.purchases.push(purchase);
+
+  // Supplier Ledger: Purchase increases liability
+  const purchaseTx: SupplierTransaction = {
+    id: `stx_${Date.now()}_pur`,
     supplierId: params.supplierId,
     shopId: params.shopId,
-    date: Date.now(),
+    date: params.invoiceDate || Date.now(),
     type: "PURCHASE",
     referenceId: purchaseId,
     referenceNumber: purchaseNumber,
@@ -3073,19 +3280,114 @@ export async function createPurchaseOrder(params: {
     notes: `Purchase Inward Bill #${purchaseNumber}`,
     createdAt: Date.now(),
   };
+  store.supplierTransactions.push(purchaseTx);
 
-  store.purchases.push(purchase);
-  store.supplierTransactions.push(tx);
+  let createdCheque: Cheque | undefined;
+
+  // Handle Payment
+  if (params.paymentMethod === "CASH") {
+    // Immediate Cash payment reduces liability
+    const cashTx: SupplierTransaction = {
+      id: `stx_${Date.now()}_pay`,
+      supplierId: params.supplierId,
+      shopId: params.shopId,
+      date: params.invoiceDate || Date.now(),
+      type: "PAYMENT",
+      referenceId: purchaseId,
+      referenceNumber: purchaseNumber,
+      debit: totalAmount,
+      credit: 0,
+      balanceAfter: 0,
+      notes: `Cash payment for Purchase #${purchaseNumber}`,
+      createdAt: Date.now(),
+    };
+    store.supplierTransactions.push(cashTx);
+
+    store.payments.push({
+      id: `spay_${Date.now()}`,
+      supplierId: params.supplierId,
+      shopId: params.shopId,
+      paymentNumber: getNextSequentialNumber("SPAY", "supplierPayment"),
+      amount: totalAmount,
+      paymentMethod: "CASH",
+      reference: purchaseNumber,
+      notes: `Cash payment for purchase #${purchaseNumber}`,
+      createdAt: Date.now(),
+    });
+  } else if (params.paymentMethod === "CHEQUE") {
+    const chqId = `chq_${Date.now()}`;
+    createdCheque = {
+      id: chqId,
+      chequeNumber: params.chequeDetails!.chequeNumber.trim(),
+      supplierId: params.supplierId,
+      supplierNameCache: supplier.name,
+      shopId: params.shopId,
+      bankName: params.chequeDetails!.bankName.trim(),
+      amount: totalAmount,
+      issueDate: Date.now(),
+      dueDate: params.chequeDetails!.chequeDate,
+      clearedDate: null,
+      status: "PENDING",
+      purchaseId,
+      purchaseNumber,
+      issuedBy: (params.callingUser as any).id || (params.callingUser as any).uid || "user",
+      issuedByName: params.callingUser.displayName || "Cashier",
+      needsReview: isCashier,
+      history: [
+        {
+          from: "NEW",
+          to: "PENDING",
+          at: Date.now(),
+          by: params.callingUser.displayName || "Cashier",
+          reason: `Cheque issued for purchase ${purchaseNumber}`,
+        },
+      ],
+      createdAt: Date.now(),
+    };
+    store.cheques.push(createdCheque);
+  } else if (params.paymentMethod === "BANK_TRANSFER") {
+    const bankTx: SupplierTransaction = {
+      id: `stx_${Date.now()}_pay`,
+      supplierId: params.supplierId,
+      shopId: params.shopId,
+      date: params.invoiceDate || Date.now(),
+      type: "PAYMENT",
+      referenceId: purchaseId,
+      referenceNumber: purchaseNumber,
+      debit: totalAmount,
+      credit: 0,
+      balanceAfter: 0,
+      notes: `Bank transfer payment for Purchase #${purchaseNumber}`,
+      createdAt: Date.now(),
+    };
+    store.supplierTransactions.push(bankTx);
+  } else if (params.paymentMethod === "PARTIAL" && paidAmount > 0) {
+    const partialTx: SupplierTransaction = {
+      id: `stx_${Date.now()}_pay`,
+      supplierId: params.supplierId,
+      shopId: params.shopId,
+      date: params.invoiceDate || Date.now(),
+      type: "PAYMENT",
+      referenceId: purchaseId,
+      referenceNumber: purchaseNumber,
+      debit: paidAmount,
+      credit: 0,
+      balanceAfter: 0,
+      notes: `Partial payment for Purchase #${purchaseNumber}`,
+      createdAt: Date.now(),
+    };
+    store.supplierTransactions.push(partialTx);
+  }
 
   logAuditAction(store, {
-    userId: params.receivedBy,
-    userEmailCache: "Purchasing Officer",
+    userId: (params.callingUser as any).id || (params.callingUser as any).uid || "user",
+    userEmailCache: params.callingUser.displayName || params.callingUser.role,
     action: "PURCHASE_CREATE",
     entityType: "purchases",
     entityId: purchaseId,
     shopId: params.shopId,
     after: purchase,
-    reason: `Created purchase ${purchaseNumber} for supplier ${supplier.name}`,
+    reason: `Created purchase ${purchaseNumber} for supplier ${supplier.name} via ${params.paymentMethod}${needsReview ? " (Needs review)" : ""}`,
   });
 
   saveLocalStore(store);
@@ -3093,10 +3395,171 @@ export async function createPurchaseOrder(params: {
   try {
     const batch = writeBatch(db);
     batch.set(doc(db, "purchases", purchaseId), purchase);
-    batch.set(doc(db, "supplierTransactions", tx.id), tx);
+    batch.set(doc(db, "supplierTransactions", purchaseTx.id), purchaseTx);
+    if (createdCheque) {
+      batch.set(doc(db, "cheques", createdCheque.id), createdCheque);
+    }
     await batch.commit();
   } catch (e) {
     console.warn("Firestore sync purchase error:", e);
+  }
+
+  return { purchase, cheque: createdCheque };
+}
+
+// Backwards-compatible wrapper
+export async function createPurchaseOrder(params: {
+  shopId: string;
+  supplierId: string;
+  items: { variant: ProductVariant; quantity: number; unitCost: number }[];
+  receivedBy: string;
+  notes?: string;
+}): Promise<Purchase> {
+  const res = await createPurchase({
+    shopId: params.shopId,
+    supplierId: params.supplierId,
+    items: params.items,
+    notes: params.notes,
+    paymentMethod: "CASH",
+    callingUser: {
+      id: params.receivedBy,
+      role: "SUPER_ADMIN",
+      displayName: params.receivedBy,
+    },
+  });
+  return res.purchase;
+}
+
+export async function markPurchaseReviewed(
+  purchaseId: string,
+  reviewedBy: UserProfile | { id: string; role: UserRole; displayName?: string },
+  note?: string
+): Promise<Purchase> {
+  if (reviewedBy.role !== "SUPER_ADMIN") {
+    throw new Error(ERROR_MESSAGES.PERMISSION_DENIED);
+  }
+
+  const store = loadLocalStore();
+  const purchase = store.purchases.find((p) => p.id === purchaseId);
+  if (!purchase) throw new Error("Purchase not found.");
+
+  purchase.needsReview = false;
+  purchase.reviewedBy = (reviewedBy as any).id || (reviewedBy as any).uid || "admin";
+  purchase.reviewedAt = Date.now();
+  purchase.reviewNote = note || null;
+
+  logAuditAction(store, {
+    userId: (reviewedBy as any).id || (reviewedBy as any).uid || "admin",
+    userEmailCache: reviewedBy.displayName || "Super Admin",
+    action: "PURCHASE_REVIEW",
+    entityType: "purchases",
+    entityId: purchaseId,
+    shopId: purchase.shopId,
+    after: purchase,
+    reason: `Marked purchase ${purchase.purchaseNumber} as reviewed${note ? `: ${note}` : ""}`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await setDoc(doc(db, "purchases", purchaseId), purchase);
+  } catch (e) {
+    console.warn("Firestore sync purchase review error:", e);
+  }
+
+  return purchase;
+}
+
+export async function cancelPurchase(
+  purchaseId: string,
+  cancelledBy: UserProfile | { id: string; role: UserRole; displayName?: string },
+  reason?: string
+): Promise<Purchase> {
+  if (cancelledBy.role !== "SUPER_ADMIN") {
+    throw new Error(ERROR_MESSAGES.PERMISSION_DENIED);
+  }
+
+  const store = loadLocalStore();
+  const purchase = store.purchases.find((p) => p.id === purchaseId);
+  if (!purchase) throw new Error("Purchase not found.");
+  if (purchase.status === "CANCELLED") throw new Error("Purchase is already cancelled.");
+
+  // Check inventory stock safeguard: cancelling cannot make stock negative
+  for (const item of purchase.items) {
+    const invKey = `${purchase.shopId}_${item.variantId}`;
+    const curStock = store.inventory[invKey]?.quantityOnHand || 0;
+    if (curStock - item.quantity < 0) {
+      throw new Error(
+        `Cannot cancel purchase: variant ${item.variantDescriptionCache} would have negative stock (${curStock - item.quantity}).`
+      );
+    }
+  }
+
+  // Deduct inventory
+  for (const item of purchase.items) {
+    const invKey = `${purchase.shopId}_${item.variantId}`;
+    const beforeQty = store.inventory[invKey].quantityOnHand;
+    const afterQty = beforeQty - item.quantity;
+    store.inventory[invKey].quantityOnHand = afterQty;
+    store.inventory[invKey].lastMovementAt = Date.now();
+
+    store.movements.push({
+      id: `mvt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}_pur_cancel_${item.variantId}`,
+      shopId: purchase.shopId,
+      variantId: item.variantId,
+      productId: item.productId,
+      type: "PURCHASE_CANCEL" as any,
+      quantity: -item.quantity,
+      direction: "OUT",
+      quantityBefore: beforeQty,
+      quantityAfter: afterQty,
+      referenceType: "PURCHASE",
+      referenceId: purchaseId,
+      userId: (cancelledBy as any).id || (cancelledBy as any).uid || "admin",
+      createdAt: Date.now(),
+    });
+  }
+
+  // Reverse supplier ledger transaction
+  const revTx: SupplierTransaction = {
+    id: `stx_${Date.now()}_rev`,
+    supplierId: purchase.supplierId,
+    shopId: purchase.shopId,
+    date: Date.now(),
+    type: "ADJUSTMENT",
+    referenceId: purchaseId,
+    referenceNumber: `REV-${purchase.purchaseNumber}`,
+    debit: purchase.totalAmount,
+    credit: 0,
+    balanceAfter: 0,
+    notes: `Cancellation reversal for Purchase #${purchase.purchaseNumber}`,
+    createdAt: Date.now(),
+  };
+  store.supplierTransactions.push(revTx);
+
+  purchase.status = "CANCELLED";
+  purchase.cancelledBy = (cancelledBy as any).id || (cancelledBy as any).uid || "admin";
+  purchase.cancelledAt = Date.now();
+  purchase.cancelReason = reason || "Cancelled by Super Admin";
+
+  logAuditAction(store, {
+    userId: (cancelledBy as any).id || (cancelledBy as any).uid || "admin",
+    userEmailCache: cancelledBy.displayName || "Super Admin",
+    action: "PURCHASE_CANCEL",
+    entityType: "purchases",
+    entityId: purchaseId,
+    shopId: purchase.shopId,
+    after: purchase,
+    reason: `Cancelled purchase ${purchase.purchaseNumber}: ${reason || "No reason specified"}`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await setDoc(doc(db, "purchases", purchaseId), purchase);
+    await setDoc(doc(db, "supplierTransactions", revTx.id), revTx);
+  } catch (e) {
+    console.warn("Firestore sync purchase cancel error:", e);
   }
 
   return purchase;
@@ -3105,7 +3568,11 @@ export async function createPurchaseOrder(params: {
 // ==========================================
 // 11. CHEQUES & SUPPLIER PAYMENTS (Super Admin Only!)
 // ==========================================
-export function getCheques(): Cheque[] {
+export function getCheques(callingUser?: UserProfile | { role: UserRole } | null): Cheque[] {
+  // Section 7.1 / U5: Cashier has no access to cheque list
+  if (callingUser && callingUser.role === "CASHIER") {
+    throw new Error(ERROR_MESSAGES.PERMISSION_DENIED);
+  }
   const store = loadLocalStore();
   return store.cheques.sort((a, b) => b.dueDate - a.dueDate);
 }

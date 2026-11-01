@@ -21,6 +21,7 @@ interface QuickAddProductModalProps {
   onProductCreated?: (created: { product: Product; variant: ProductVariant }) => void;
   initialProductType?: ProductType;
   initialBarcode?: string;
+  showCostField?: boolean;
 }
 
 export function QuickAddProductModal({
@@ -29,6 +30,7 @@ export function QuickAddProductModal({
   onProductCreated,
   initialProductType = "FOOTWEAR",
   initialBarcode,
+  showCostField = false,
 }: QuickAddProductModalProps) {
   const { currentUser, activeShop, refreshData } = useApp();
 
@@ -47,7 +49,7 @@ export function QuickAddProductModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canEditCost = currentUser?.role === "SUPER_ADMIN";
+  const canEditCost = showCostField || currentUser?.role === "SUPER_ADMIN";
 
   // Filter master lists by productType
   const allCategories = useMemo(() => getCategories(), []);

@@ -12,6 +12,9 @@ import {
   CustomerPaymentReceipt,
   CashAdvanceReceipt,
   CustomerLedgerEntry,
+  Purchase,
+  Cheque,
+  Supplier,
 } from "@/types";
 import { generateBarcodeSVG } from "./barcode-svg";
 
@@ -1371,6 +1374,184 @@ export function renderCustomerStatementHTML(
       <div style="display: flex; justify-content: space-between; margin-top: 48px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280;">
         <div>For queries regarding this statement, contact ${shop.phone}</div>
         <div>Page 1 of 1</div>
+      </div>
+    </div>
+  `;
+}
+
+// ==========================================
+// PURCHASE BILL & CHEQUE VOUCHER (WP7)
+// ==========================================
+
+export function renderPurchaseBillHTML(
+  purchase: Purchase,
+  shop: Shop,
+  options: { isDuplicate?: boolean; width?: "80mm" | "A4" } = {}
+): string {
+  const isDuplicate = options.isDuplicate || false;
+  const totalUnits = purchase.items.reduce((sum, item) => sum + item.quantity, 0);
+
+  const paymentText =
+    purchase.paymentMethod === "CASH"
+      ? "PAID IN CASH"
+      : purchase.paymentMethod === "CHEQUE"
+      ? `PAID BY CHEQUE (Chq #: ${purchase.chequeDetails?.chequeNumber || "-"}, Bank: ${purchase.chequeDetails?.bankName || "-"}, Due: ${formatDate(purchase.chequeDetails?.chequeDate || 0)})`
+      : purchase.paymentMethod === "CREDIT"
+      ? "CREDIT PURCHASE (PAY LATER)"
+      : purchase.paymentMethod === "BANK_TRANSFER"
+      ? "PAID VIA BANK TRANSFER"
+      : purchase.paymentMethod === "PARTIAL"
+      ? `PARTIAL PAYMENT (Paid: ${formatCurrency(purchase.paidAmount || 0)}, Credit: ${formatCurrency(Math.max(0, purchase.totalAmount - (purchase.paidAmount || 0)))})`
+      : "PURCHASE INWARD";
+
+  return `
+    <div style="font-family: 'Courier New', Courier, monospace; width: 80mm; padding: 4mm; margin: 0 auto; background: #fff; color: #000; box-sizing: border-box; font-size: 11px; line-height: 1.35;">
+      ${isDuplicate ? `
+        <div style="border: 2px dashed #b91c1c; color: #b91c1c; text-align: center; font-weight: bold; font-size: 13px; padding: 4px; margin-bottom: 8px;">
+          *** DUPLICATE REPRINT ***
+        </div>
+      ` : ""}
+
+      <div style="text-align: center; margin-bottom: 8px;">
+        <div style="font-size: 14px; font-weight: bold; text-transform: uppercase;">${shop.name}</div>
+        <div style="font-size: 10px; color: #333;">${shop.address || ""}</div>
+        <div style="font-size: 10px; color: #333;">Tel: ${shop.phone || ""}</div>
+        <div style="margin-top: 6px; font-size: 12px; font-weight: bold; letter-spacing: 1px; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 3px 0;">
+          PURCHASE INWARD BILL
+        </div>
+      </div>
+
+      <div style="margin-bottom: 6px; font-size: 10.5px;">
+        <div style="display: flex; justify-content: space-between;">
+          <span>Bill No:</span>
+          <strong>${purchase.purchaseNumber}</strong>
+        </div>
+        ${purchase.supplierBillNumber ? `
+          <div style="display: flex; justify-content: space-between;">
+            <span>Supplier Inv:</span>
+            <span>${purchase.supplierBillNumber}</span>
+          </div>
+        ` : ""}
+        <div style="display: flex; justify-content: space-between;">
+          <span>Date:</span>
+          <span>${formatDate(purchase.invoiceDate || purchase.receivedAt)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span>Supplier:</span>
+          <strong>${purchase.supplierNameCache}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span>Branch:</span>
+          <span>${shop.name}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span>Issued By:</span>
+          <span>${purchase.createdByNameCache || purchase.receivedBy}</span>
+        </div>
+      </div>
+
+      <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 4px 0; margin-bottom: 6px;">
+        <div style="font-size: 10px; font-weight: bold; margin-bottom: 4px; display: flex; justify-content: space-between;">
+          <span>ITEM / DESCRIPTION</span>
+          <span>TOTAL</span>
+        </div>
+        ${purchase.items.map((item) => `
+          <div style="margin-bottom: 4px;">
+            <div style="font-weight: bold; font-size: 10.5px;">${item.variantDescriptionCache}</div>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #222;">
+              <span>${item.quantity} units @ ${formatCurrency(item.unitCost)}</span>
+              <span>${formatCurrency(item.lineTotal)}</span>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+
+      <div style="margin-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between; font-size: 11px;">
+          <span>Total Units:</span>
+          <strong>${totalUnits}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-top: 4px; padding-top: 4px; border-top: 1px solid #000;">
+          <span>TOTAL AMOUNT:</span>
+          <span>${formatCurrency(purchase.totalAmount)}</span>
+        </div>
+      </div>
+
+      <div style="background: #f4f4f4; border: 1px solid #ccc; padding: 6px; text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 12px;">
+        ${paymentText}
+      </div>
+
+      ${purchase.notes ? `
+        <div style="font-size: 10px; margin-bottom: 10px; font-style: italic;">
+          Notes: ${purchase.notes}
+        </div>
+      ` : ""}
+
+      <div style="margin-top: 24px; padding-top: 12px; font-size: 10px;">
+        <div style="margin-bottom: 20px;">
+          <div>Issued By: _________________________________</div>
+          <div style="font-size: 9px; color: #555; margin-top: 2px;">${purchase.createdByNameCache || purchase.receivedBy}</div>
+        </div>
+        <div>
+          <div>Receiver / Supplier: _______________________</div>
+          <div style="font-size: 9px; color: #555; margin-top: 2px;">Authorized Signature & Date</div>
+        </div>
+      </div>
+
+      <div style="text-align: center; margin-top: 16px; font-size: 9px; color: #666; border-top: 1px dashed #999; padding-top: 6px;">
+        Stock verified and received into inventory.
+      </div>
+    </div>
+  `;
+}
+
+export function renderChequeVoucherHTML(
+  cheque: Cheque,
+  purchase: Purchase,
+  shop: Shop
+): string {
+  return `
+    <div style="font-family: Arial, sans-serif; width: 148mm; padding: 10mm; margin: 0 auto; background: #fff; color: #000; border: 2px solid #000; box-sizing: border-box; font-size: 12px; line-height: 1.4;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
+        <div>
+          <div style="font-size: 18px; font-weight: bold; text-transform: uppercase;">${shop.name}</div>
+          <div style="font-size: 11px; color: #444;">${shop.address || ""} | Tel: ${shop.phone || ""}</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 15px; font-weight: bold; color: #0284c7;">CHEQUE PAYMENT VOUCHER</div>
+          <div style="font-size: 11px; margin-top: 2px;">Voucher Date: ${formatDate(Date.now())}</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; background: #f8fafc; padding: 10px; border: 1px solid #cbd5e1; border-radius: 4px;">
+        <div><strong>Payee Supplier:</strong> ${cheque.supplierNameCache}</div>
+        <div><strong>Cheque Number:</strong> <span style="font-family: monospace; font-size: 13px; font-weight: bold;">${cheque.chequeNumber}</span></div>
+        <div><strong>Bank:</strong> ${cheque.bankName}</div>
+        <div><strong>Cheque Due Date:</strong> ${formatDate(cheque.dueDate)}</div>
+        <div><strong>Linked Purchase Bill:</strong> ${purchase.purchaseNumber}</div>
+        <div><strong>Branch:</strong> ${shop.name}</div>
+      </div>
+
+      <div style="margin-bottom: 20px; padding: 12px; border: 1px dashed #000; text-align: center; background: #f1f5f9;">
+        <div style="font-size: 12px; color: #475569; text-transform: uppercase; font-weight: bold;">Cheque Amount</div>
+        <div style="font-size: 22px; font-weight: 900; color: #0f172a; margin-top: 4px; font-variant-numeric: tabular-nums;">
+          ${formatCurrency(cheque.amount)}
+        </div>
+      </div>
+
+      <div style="margin-top: 36px; display: flex; justify-content: space-between; font-size: 11px;">
+        <div style="text-align: center; width: 45%;">
+          <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: bold;">
+            Prepared By: ${cheque.issuedByName || "Cashier"}
+          </div>
+          <div style="color: #64748b; font-size: 10px;">Signature & Stamp</div>
+        </div>
+        <div style="text-align: center; width: 45%;">
+          <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: bold;">
+            Payee / Supplier Acknowledgment
+          </div>
+          <div style="color: #64748b; font-size: 10px;">Signature & Date</div>
+        </div>
       </div>
     </div>
   `;
