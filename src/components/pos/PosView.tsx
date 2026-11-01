@@ -519,32 +519,6 @@ export function PosView() {
       setIsSubmitting(false);
     }
   };
-          discount: c.discount,
-          lineTotal: c.lineTotal,
-        })),
-        subtotal: cartSubtotal,
-        discount: billDiscount,
-        taxAmount: 0,
-        total: netTotal,
-        payments,
-        amountReceived: received,
-        changeGiven: change,
-      });
-
-      showToast(`Sale completed! Invoice #${sale.invoiceNumber}`, "success");
-      setIsPaymentModalOpen(false);
-      clearCart();
-      refreshData();
-
-      // Automatically open thermal receipt print preview
-      const receiptHTML = renderSaleReceiptHTML(sale, items, activeShop);
-      openPrintModal(`Invoice Receipt — ${sale.invoiceNumber}`, receiptHTML);
-    } catch (err: any) {
-      showToast(err.message || "Failed to complete sale", "error");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
     <div style={{ display: "flex", height: "calc(100vh - 56px)", overflow: "hidden", background: "var(--canvas)", gap: "16px", padding: "16px" }}>
