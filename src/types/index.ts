@@ -463,6 +463,9 @@ export interface StockTransfer {
   receivedBy?: string | null;
   receivedAt?: number | null;
   discrepancyNotes?: string | null;
+  mode?: "QUICK" | "FORMAL";
+  notes?: string | null;
+  idempotencyKey?: string | null;
 }
 
 export interface Supplier {

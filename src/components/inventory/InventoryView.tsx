@@ -14,120 +14,158 @@ import {
   approveStockCount,
   getBrands,
   getCategories,
+  getProducts,
+  getStockCheckRows,
+  getCentralStockReport,
+  StockCheckRow,
+  CentralStockRow,
 } from "@/lib/firestore-service";
 import { formatCurrency, formatDate } from "@/lib/receipt-generator";
-import { ProductVariant, Inventory, StockMovement, StockCount, StockCountStatus } from "@/types";
+import { ProductVariant, Inventory, StockMovement, StockCount, StockCountStatus, ProductType } from "@/types";
 import { CameraScannerModal } from "@/components/common/CameraScannerModal";
 import {
   Boxes,
-  Plus,
   Search,
   AlertTriangle,
   History,
   SlidersHorizontal,
-  ArrowDownRight,
-  ArrowUpRight,
-  X,
-  CheckCircle2,
   ClipboardList,
   Camera,
   Check,
+  Download,
+  Filter,
+  CheckCircle2,
+  XCircle,
   Eye,
-  EyeOff,
+  X,
 } from "lucide-react";
 
 export function InventoryView() {
-  const { activeShop, currentUser, showToast, refreshData, dataVersion, hasPermission } = useApp();
+  const { activeShop, shops, currentUser, showToast, refreshData, dataVersion, hasPermission } = useApp();
 
-  const [activeTab, setActiveTab] = useState<"STOCK" | "MOVEMENTS" | "COUNT">("STOCK");
+  const isSuperAdmin = currentUser?.role === "SUPER_ADMIN";
+  const isCashier = currentUser?.role === "CASHIER";
+
+  // Navigation tab for Super Admin
+  const [activeTab, setActiveTab] = useState<"CENTRAL_STOCK" | "MOVEMENTS" | "COUNT">("CENTRAL_STOCK");
+
+  // Search & Filter State
   const [searchQuery, setSearchQuery] = useState("");
-  const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
+  const [selectedType, setSelectedType] = useState<"ALL" | ProductType>("ALL");
+  const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
+  const [selectedBrand, setSelectedBrand] = useState<string>("ALL");
+  const [selectedGender, setSelectedGender] = useState<string>("ALL");
+  const [selectedStockStatus, setSelectedStockStatus] = useState<"ALL" | "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK">("ALL");
 
-  // Adjustment Form
+  // Camera Barcode Scanner
+  const [isCameraScanOpen, setIsCameraScanOpen] = useState(false);
+
+  // Adjustment Modal State
+  const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState("");
+  const [adjustShopId, setAdjustShopId] = useState(activeShop.id);
   const [adjustType, setAdjustType] = useState<"ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "DAMAGE">("ADJUSTMENT_IN");
   const [adjustQuantity, setAdjustQuantity] = useState("1");
   const [adjustReason, setAdjustReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Stock Count State
+  // Stock Count Modal State
   const [isStartCountModalOpen, setIsStartCountModalOpen] = useState(false);
   const [countScope, setCountScope] = useState<"ALL" | "BRAND" | "CATEGORY">("ALL");
   const [countScopeFilter, setCountScopeFilter] = useState("");
   const [activeCountSession, setActiveCountSession] = useState<StockCount | null>(null);
   const [countedQuantities, setCountedQuantities] = useState<Record<string, number>>({});
-  const [isCameraScanOpen, setIsCameraScanOpen] = useState(false);
 
-  const canSeeCost = currentUser?.role === "SUPER_ADMIN";
-  const canAdjustStock = hasPermission("inventory.adjust");
-  const canApproveCount = currentUser?.role === "SUPER_ADMIN";
+  // Other branch determination
+  const otherShop = useMemo(
+    () => shops.find((s) => s.id !== activeShop.id) || shops[0],
+    [shops, activeShop.id]
+  );
 
-  const variants = useMemo(() => getVariants(), [dataVersion]);
-  const inventoryList = useMemo(() => getInventoryForShop(activeShop.id), [activeShop.id, dataVersion]);
-  const movements = useMemo(() => getStockMovements(activeShop.id), [activeShop.id, dataVersion]);
-  const stockCounts = useMemo(() => getStockCounts(activeShop.id), [activeShop.id, dataVersion]);
+  // Reference data
   const brands = useMemo(() => getBrands(), [dataVersion]);
   const categories = useMemo(() => getCategories(), [dataVersion]);
+  const variants = useMemo(() => getVariants(), [dataVersion]);
+  const movements = useMemo(() => getStockMovements(activeShop.id), [activeShop.id, dataVersion]);
+  const stockCounts = useMemo(() => getStockCounts(activeShop.id), [activeShop.id, dataVersion]);
 
-  // Map variantId -> Inventory
-  const invMap = useMemo(() => {
-    const map: Record<string, Inventory> = {};
-    inventoryList.forEach((inv) => {
-      map[inv.variantId] = inv;
-    });
-    return map;
-  }, [inventoryList]);
+  // Cashier Stock Check Data
+  const cashierStockRows = useMemo(() => {
+    return getStockCheckRows(activeShop.id, otherShop.id);
+  }, [activeShop.id, otherShop.id, dataVersion]);
 
-  // Enriched stock rows
-  const enrichedStock = useMemo(() => {
-    return variants.map((v) => {
-      const inv = invMap[v.id];
-      const qoh = inv ? inv.quantityOnHand : 0;
-      const reorder = inv ? inv.reorderLevel : 3;
-      return {
-        variant: v,
-        quantityOnHand: qoh,
-        reorderLevel: reorder,
-        isLow: qoh > 0 && qoh <= reorder,
-        isOut: qoh === 0,
-      };
-    });
-  }, [variants, invMap]);
+  // Super Admin Central Stock Data
+  const centralStockReport = useMemo(() => {
+    if (!isSuperAdmin) return null;
+    try {
+      return getCentralStockReport(currentUser);
+    } catch {
+      return null;
+    }
+  }, [isSuperAdmin, currentUser, dataVersion]);
 
-  // Filtered stock
-  const filteredStock = useMemo(() => {
+  // Filter categories by selectedType
+  const filteredCategories = useMemo(() => {
+    if (selectedType === "ALL") return categories;
+    return categories.filter((c) => !c.productType || c.productType === selectedType);
+  }, [categories, selectedType]);
+
+  // Filtered Cashier Rows
+  const filteredCashierRows = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return enrichedStock;
-    return enrichedStock.filter(
-      ({ variant: v }) =>
-        v.productNameCache.toLowerCase().includes(q) ||
-        v.brandNameCache.toLowerCase().includes(q) ||
-        v.sku.toLowerCase().includes(q) ||
-        v.barcode.includes(q) ||
-        v.colorNameCache.toLowerCase().includes(q) ||
-        v.sizeLabelCache.toLowerCase().includes(q)
-    );
-  }, [enrichedStock, searchQuery]);
+    return cashierStockRows.filter((r) => {
+      if (selectedType !== "ALL" && r.productType !== selectedType) return false;
+      if (selectedCategory !== "ALL" && r.categoryName !== selectedCategory) return false;
+      if (selectedBrand !== "ALL" && r.brandName !== selectedBrand) return false;
+      if (selectedGender !== "ALL" && r.gender !== selectedGender) return false;
 
-  // Summary Metrics
-  const totalPairsOnHand = useMemo(
-    () => enrichedStock.reduce((sum, item) => sum + item.quantityOnHand, 0),
-    [enrichedStock]
-  );
-  const outOfStockCount = useMemo(
-    () => enrichedStock.filter((item) => item.isOut).length,
-    [enrichedStock]
-  );
-  const lowStockCount = useMemo(
-    () => enrichedStock.filter((item) => item.isLow).length,
-    [enrichedStock]
-  );
+      if (selectedStockStatus === "IN_STOCK" && r.thisBranchStock <= 0) return false;
+      if (selectedStockStatus === "LOW_STOCK" && (r.thisBranchStock <= 0 || r.thisBranchStock > r.reorderLevel)) return false;
+      if (selectedStockStatus === "OUT_OF_STOCK" && r.thisBranchStock > 0) return false;
+
+      if (!q) return true;
+      return (
+        r.productName.toLowerCase().includes(q) ||
+        r.brandName.toLowerCase().includes(q) ||
+        r.sku.toLowerCase().includes(q) ||
+        r.barcode.includes(q) ||
+        r.colorName.toLowerCase().includes(q) ||
+        r.sizeLabel.toLowerCase().includes(q)
+      );
+    });
+  }, [cashierStockRows, searchQuery, selectedType, selectedCategory, selectedBrand, selectedGender, selectedStockStatus]);
+
+  // Filtered Central Stock Rows (Super Admin)
+  const filteredCentralRows = useMemo(() => {
+    if (!centralStockReport) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return centralStockReport.rows.filter((r) => {
+      if (selectedType !== "ALL" && r.productType !== selectedType) return false;
+      if (selectedCategory !== "ALL" && r.categoryName !== selectedCategory) return false;
+      if (selectedBrand !== "ALL" && r.brandName !== selectedBrand) return false;
+      if (selectedGender !== "ALL" && r.gender !== selectedGender) return false;
+
+      if (selectedStockStatus === "IN_STOCK" && r.totalStock <= 0) return false;
+      if (selectedStockStatus === "LOW_STOCK" && (r.totalStock <= 0 || r.totalStock > r.reorderLevel)) return false;
+      if (selectedStockStatus === "OUT_OF_STOCK" && r.totalStock > 0) return false;
+
+      if (!q) return true;
+      return (
+        r.productName.toLowerCase().includes(q) ||
+        r.brandName.toLowerCase().includes(q) ||
+        r.sku.toLowerCase().includes(q) ||
+        r.barcode.includes(q) ||
+        r.colorName.toLowerCase().includes(q) ||
+        r.sizeLabel.toLowerCase().includes(q)
+      );
+    });
+  }, [centralStockReport, searchQuery, selectedType, selectedCategory, selectedBrand, selectedGender, selectedStockStatus]);
 
   // Handle Adjustment Submission
   const handleAdjustSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVariantId) {
-      showToast("Select a shoe variant to adjust.", "error");
+      showToast("Select a product variant to adjust.", "error");
       return;
     }
     const qty = parseInt(adjustQuantity) || 0;
@@ -143,12 +181,12 @@ export function InventoryView() {
     setIsSubmitting(true);
     try {
       await adjustStock({
-        shopId: activeShop.id,
+        shopId: adjustShopId,
         variantId: selectedVariantId,
         type: adjustType,
         quantity: qty,
         reason: adjustReason.trim(),
-        userId: currentUser?.displayName || "Authorized Staff",
+        userId: currentUser?.displayName || "Super Admin",
       });
 
       showToast("Stock adjustment logged and inventory updated.", "success");
@@ -163,7 +201,61 @@ export function InventoryView() {
     }
   };
 
-  // Handle Start Stock Count
+  // Handle CSV Export for Super Admin
+  const handleExportCSV = () => {
+    if (!centralStockReport) return;
+    const headers = [
+      "Product",
+      "Brand",
+      "Category",
+      "Type",
+      "Colour",
+      "Size",
+      "SKU",
+      "Barcode",
+      "RightWay Stock",
+      "Mega Stock",
+      "Total Stock",
+      "Reorder Level",
+      "Selling Price (LKR)",
+      "Cost Price (LKR)",
+      "Retail Valuation (LKR)",
+      "Cost Valuation (LKR)",
+    ];
+
+    const rows = centralStockReport.rows.map((r) => [
+      `"${r.productName.replace(/"/g, '""')}"`,
+      `"${r.brandName.replace(/"/g, '""')}"`,
+      `"${r.categoryName.replace(/"/g, '""')}"`,
+      `"${r.productType || "FOOTWEAR"}"`,
+      `"${r.colorName.replace(/"/g, '""')}"`,
+      `"${r.sizeLabel.replace(/"/g, '""')}"`,
+      `"${r.sku}"`,
+      `"${r.barcode}"`,
+      r.rightWayStock,
+      r.megaStock,
+      r.totalStock,
+      r.reorderLevel,
+      r.sellingPrice,
+      r.referenceCostPrice,
+      r.retailValuation,
+      r.costValuation,
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const dateStr = new Date().toISOString().split("T")[0];
+    link.setAttribute("href", url);
+    link.setAttribute("download", `central-stock-${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Central stock CSV exported successfully.", "success");
+  };
+
+  // Stock count handlers
   const handleStartCount = async () => {
     if (!currentUser) return;
     setIsSubmitting(true);
@@ -179,7 +271,6 @@ export function InventoryView() {
       showToast(`Stock count ${count.countNumber} started!`, "success");
       setIsStartCountModalOpen(false);
       setActiveCountSession(count);
-      // Initialize counts map
       const initialMap: Record<string, number> = {};
       count.lines.forEach((l) => {
         initialMap[l.variantId] = 0;
@@ -193,7 +284,6 @@ export function InventoryView() {
     }
   };
 
-  // Submit Active Count
   const handleSubmitCount = async () => {
     if (!activeCountSession || !currentUser) return;
     setIsSubmitting(true);
@@ -209,7 +299,7 @@ export function InventoryView() {
         submittedBy: currentUser.displayName,
       });
 
-      showToast(`Stock count ${activeCountSession.countNumber} submitted for manager/admin approval.`, "success");
+      showToast(`Stock count ${activeCountSession.countNumber} submitted.`, "success");
       setActiveCountSession(null);
       refreshData();
     } catch (err: any) {
@@ -219,20 +309,18 @@ export function InventoryView() {
     }
   };
 
-  // Super Admin Approval of Count
   const handleApproveCount = async (count: StockCount) => {
     if (!currentUser) return;
-    if (!confirm(`Approve stock count ${count.countNumber}? This will post automated stock adjustments for all variance lines.`)) {
+    if (!confirm(`Approve stock count ${count.countNumber}? This will post automated stock adjustments.`)) {
       return;
     }
-
     try {
       await approveStockCount({
         countId: count.id,
         approvedBy: currentUser.uid,
         approvedByName: currentUser.displayName,
       });
-      showToast(`Stock count ${count.countNumber} approved and inventory reconciled!`, "success");
+      showToast(`Stock count ${count.countNumber} approved and reconciled!`, "success");
       refreshData();
     } catch (err: any) {
       showToast(err.message || "Failed to approve stock count", "error");
@@ -251,161 +339,565 @@ export function InventoryView() {
         paddingBottom: "90px",
       }}
     >
-      {/* Top Header */}
+      {/* ── HEADER ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
         <div>
           <h2 style={{ fontSize: "22px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
-            Branch Inventory & Stock
+            {isCashier ? "Stock Check" : "Central Stock & Inventory"}
           </h2>
           <div style={{ fontSize: "14px", color: "var(--ink-2)", marginTop: "2px" }}>
-            Real-time stock on hand, physical stock count & audit trail &bull; {activeShop.name} ({activeShop.code})
+            {isCashier
+              ? `Check inventory across both branches &bull; Active: ${activeShop.name}`
+              : "Company-wide multi-branch inventory, valuations, transfers & counts"}
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "8px" }}>
-          {canAdjustStock && (
+        {/* Super Admin Action Buttons */}
+        {isSuperAdmin && (
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <button
               className="btn btn-secondary"
-              onClick={() => setIsAdjustModalOpen(true)}
+              onClick={handleExportCSV}
+              style={{ height: "42px", display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              <Download size={15} />
+              <span>Export CSV</span>
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setSelectedVariantId("");
+                setAdjustQuantity("1");
+                setAdjustReason("");
+                setIsAdjustModalOpen(true);
+              }}
               style={{ height: "42px", display: "flex", alignItems: "center", gap: "6px" }}
             >
               <SlidersHorizontal size={15} />
               <span>Adjust stock</span>
             </button>
-          )}
-
-          <button
-            className="btn btn-primary"
-            onClick={() => setIsStartCountModalOpen(true)}
-            style={{ height: "42px", display: "flex", alignItems: "center", gap: "6px" }}
-          >
-            <ClipboardList size={16} />
-            <span>New stock count</span>
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
-        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", padding: "14px 18px" }}>
-          <div style={{ fontSize: "12px", color: "var(--ink-3)", fontWeight: "600", textTransform: "uppercase" }}>Total Pairs on Hand</div>
-          <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
-            {totalPairsOnHand} pairs
-          </div>
-        </div>
-        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", padding: "14px 18px" }}>
-          <div style={{ fontSize: "12px", color: "var(--warning)", fontWeight: "600", textTransform: "uppercase" }}>Low Stock Warnings</div>
-          <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--warning)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
-            {lowStockCount} lines
-          </div>
-        </div>
-        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", padding: "14px 18px" }}>
-          <div style={{ fontSize: "12px", color: "var(--danger)", fontWeight: "600", textTransform: "uppercase" }}>Out of Stock</div>
-          <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--danger)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
-            {outOfStockCount} lines
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--line)", paddingBottom: "10px", flexWrap: "wrap", gap: "10px" }}>
-        <div className="seg-control" style={{ width: "fit-content" }}>
-          <button
-            className={activeTab === "STOCK" ? "active" : ""}
-            onClick={() => setActiveTab("STOCK")}
-          >
-            <Boxes size={15} /> Stock on hand ({filteredStock.length})
-          </button>
-          <button
-            className={activeTab === "MOVEMENTS" ? "active" : ""}
-            onClick={() => setActiveTab("MOVEMENTS")}
-          >
-            <History size={15} /> Movements ({movements.length})
-          </button>
-          <button
-            className={activeTab === "COUNT" ? "active" : ""}
-            onClick={() => setActiveTab("COUNT")}
-          >
-            <ClipboardList size={15} /> Stock Counts ({stockCounts.length})
-          </button>
-        </div>
-
-        {activeTab === "STOCK" && (
-          <div style={{ display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "8px", padding: "0 10px", height: "40px", width: "280px" }}>
-            <Search size={16} color="var(--ink-3)" style={{ marginRight: "6px" }} />
-            <input
-              type="text"
-              placeholder="Search shoe, size or SKU..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ border: "none", outline: "none", background: "transparent", fontSize: "13px", color: "var(--ink)", width: "100%" }}
-            />
+            <button
+              className="btn btn-primary"
+              onClick={() => setIsStartCountModalOpen(true)}
+              style={{ height: "42px", display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              <ClipboardList size={16} />
+              <span>New stock count</span>
+            </button>
           </div>
         )}
       </div>
 
-      {/* TAB 1: STOCK ON HAND */}
-      {activeTab === "STOCK" && (
-        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
-          <div style={{ overflowX: "auto" }}>
-            <table className="pos-table">
-              <thead>
-                <tr>
-                  <th>Shoe model</th>
-                  <th>Brand</th>
-                  <th>Colour</th>
-                  <th>Size</th>
-                  <th>SKU</th>
-                  <th>Barcode</th>
-                  {canSeeCost && <th className="num">Cost (ref)</th>}
-                  <th className="num">Selling price</th>
-                  <th className="num">On hand</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredStock.map(({ variant: v, quantityOnHand, reorderLevel, isLow, isOut }) => (
-                  <tr key={v.id}>
-                    <td style={{ fontWeight: "700", color: "var(--ink)" }}>{v.productNameCache}</td>
-                    <td style={{ color: "var(--ink-2)" }}>{v.brandNameCache}</td>
-                    <td style={{ color: "var(--ink-2)" }}>{v.colorNameCache}</td>
-                    <td style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{v.sizeLabelCache}</td>
-                    <td style={{ fontVariantNumeric: "tabular-nums", fontSize: "13px", color: "var(--ink-3)" }}>{v.sku}</td>
-                    <td style={{ fontVariantNumeric: "tabular-nums", fontSize: "13px", color: "var(--ink-3)" }}>{v.barcode}</td>
-                    {canSeeCost && (
-                      <td className="num" style={{ fontVariantNumeric: "tabular-nums", color: "var(--ink-2)" }}>
-                        {formatCurrency(v.referenceCostPrice)}
-                      </td>
-                    )}
-                    <td className="num" style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
-                      {formatCurrency(v.sellingPrice)}
-                    </td>
-                    <td className="num" style={{ fontWeight: "800", fontVariantNumeric: "tabular-nums", fontSize: "15px" }}>
-                      {quantityOnHand}
-                    </td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          isOut ? "badge-danger" : isLow ? "badge-warning" : "badge-success"
-                        }`}
-                      >
-                        {isOut ? "Out of stock" : isLow ? `Low (≤${reorderLevel})` : "In stock"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* ── SUPER ADMIN KPI CARDS (Company Total + Valuations) ── */}
+      {isSuperAdmin && centralStockReport && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", padding: "14px 18px" }}>
+            <div style={{ fontSize: "12px", color: "var(--ink-3)", fontWeight: "600", textTransform: "uppercase" }}>Company Stock</div>
+            <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+              {centralStockReport.totalUnits} units
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--ink-2)", marginTop: "2px" }}>
+              RightWay: {centralStockReport.rightWayUnits} | Mega: {centralStockReport.megaUnits}
+            </div>
+          </div>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", padding: "14px 18px" }}>
+            <div style={{ fontSize: "12px", color: "var(--primary-ink)", fontWeight: "600", textTransform: "uppercase" }}>Retail Valuation</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "var(--primary)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+              {formatCurrency(centralStockReport.totalRetailValuation)}
+            </div>
+          </div>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", padding: "14px 18px" }}>
+            <div style={{ fontSize: "12px", color: "var(--ink-3)", fontWeight: "600", textTransform: "uppercase" }}>Cost Valuation</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+              {formatCurrency(centralStockReport.totalCostValuation)}
+            </div>
+          </div>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", padding: "14px 18px" }}>
+            <div style={{ fontSize: "12px", color: "var(--success)", fontWeight: "600", textTransform: "uppercase" }}>Estimated Gross Margin</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "var(--success)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+              {centralStockReport.totalRetailValuation > 0
+                ? `${Math.round(((centralStockReport.totalRetailValuation - centralStockReport.totalCostValuation) / centralStockReport.totalRetailValuation) * 100)}%`
+                : "0%"}
+            </div>
           </div>
         </div>
       )}
 
-      {/* TAB 2: STOCK MOVEMENTS AUDIT LOG */}
-      {activeTab === "MOVEMENTS" && (
+      {/* ── SUPER ADMIN TABS ── */}
+      {isSuperAdmin && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--line)", paddingBottom: "10px", flexWrap: "wrap", gap: "10px" }}>
+          <div className="seg-control" style={{ width: "fit-content" }}>
+            <button
+              className={activeTab === "CENTRAL_STOCK" ? "active" : ""}
+              onClick={() => setActiveTab("CENTRAL_STOCK")}
+            >
+              <Boxes size={15} /> Central Stock ({filteredCentralRows.length})
+            </button>
+            <button
+              className={activeTab === "MOVEMENTS" ? "active" : ""}
+              onClick={() => setActiveTab("MOVEMENTS")}
+            >
+              <History size={15} /> Movements ({movements.length})
+            </button>
+            <button
+              className={activeTab === "COUNT" ? "active" : ""}
+              onClick={() => setActiveTab("COUNT")}
+            >
+              <ClipboardList size={15} /> Stock Counts ({stockCounts.length})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── SEARCH & FILTERS BAR (For Cashier Stock Check & Super Admin Central Stock) ── */}
+      {(isCashier || activeTab === "CENTRAL_STOCK") && (
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--line)",
+            borderRadius: "var(--radius-tile)",
+            padding: "14px 16px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+          }}
+        >
+          {/* Main Search Input */}
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                flex: 1,
+                background: "var(--surface-sunken)",
+                border: "1px solid var(--line)",
+                borderRadius: "8px",
+                padding: "0 12px",
+                height: "44px",
+              }}
+            >
+              <Search size={18} color="var(--ink-3)" style={{ marginRight: "8px" }} />
+              <input
+                type="text"
+                placeholder="Scan barcode or search model, brand, SKU..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  border: "none",
+                  outline: "none",
+                  background: "transparent",
+                  fontSize: "15px",
+                  color: "var(--ink)",
+                  width: "100%",
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  style={{ background: "transparent", border: "none", cursor: "pointer", padding: "4px" }}
+                >
+                  <X size={16} color="var(--ink-3)" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsCameraScanOpen(true)}
+              style={{ height: "44px", width: "44px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+              title="Camera Scan Barcode"
+            >
+              <Camera size={18} />
+            </button>
+          </div>
+
+          {/* Filter Pills / Dropdowns */}
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            {/* Product Type */}
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value as any)}
+              className="pos-input"
+              style={{ height: "36px", fontSize: "13px", width: "auto" }}
+            >
+              <option value="ALL">All Types</option>
+              <option value="FOOTWEAR">Footwear</option>
+              <option value="BAG">Bags</option>
+            </select>
+
+            {/* Category */}
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="pos-input"
+              style={{ height: "36px", fontSize: "13px", width: "auto" }}
+            >
+              <option value="ALL">All Categories</option>
+              {filteredCategories.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Brand */}
+            <select
+              value={selectedBrand}
+              onChange={(e) => setSelectedBrand(e.target.value)}
+              className="pos-input"
+              style={{ height: "36px", fontSize: "13px", width: "auto" }}
+            >
+              <option value="ALL">All Brands</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.name}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Gender */}
+            <select
+              value={selectedGender}
+              onChange={(e) => setSelectedGender(e.target.value)}
+              className="pos-input"
+              style={{ height: "36px", fontSize: "13px", width: "auto" }}
+            >
+              <option value="ALL">All Genders</option>
+              <option value="MEN">Men</option>
+              <option value="WOMEN">Women</option>
+              <option value="UNISEX">Unisex</option>
+              <option value="BOYS">Boys</option>
+              <option value="GIRLS">Girls</option>
+            </select>
+
+            {/* Stock Status */}
+            <select
+              value={selectedStockStatus}
+              onChange={(e) => setSelectedStockStatus(e.target.value as any)}
+              className="pos-input"
+              style={{ height: "36px", fontSize: "13px", width: "auto" }}
+            >
+              <option value="ALL">All Stock Status</option>
+              <option value="IN_STOCK">In Stock</option>
+              <option value="LOW_STOCK">Low Stock</option>
+              <option value="OUT_OF_STOCK">Out of Stock</option>
+            </select>
+
+            {(selectedType !== "ALL" ||
+              selectedCategory !== "ALL" ||
+              selectedBrand !== "ALL" ||
+              selectedGender !== "ALL" ||
+              selectedStockStatus !== "ALL" ||
+              searchQuery) && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setSelectedType("ALL");
+                  setSelectedCategory("ALL");
+                  setSelectedBrand("ALL");
+                  setSelectedGender("ALL");
+                  setSelectedStockStatus("ALL");
+                  setSearchQuery("");
+                }}
+                style={{ fontSize: "12px", color: "var(--danger)" }}
+              >
+                Reset filters
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── CASHIER STOCK CHECK VIEW ── */}
+      {isCashier && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {filteredCashierRows.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--ink-2)", fontSize: "14px" }}>
+              No items found matching the search criteria.
+            </div>
+          ) : (
+            <>
+              {/* Desktop Table View */}
+              <div
+                className="desktop-only"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "var(--radius-tile)",
+                  overflow: "hidden",
+                }}
+              >
+                <div style={{ overflowX: "auto" }}>
+                  <table className="pos-table">
+                    <thead>
+                      <tr>
+                        <th>Item model</th>
+                        <th>Brand</th>
+                        <th>Category</th>
+                        <th>Colour</th>
+                        <th>Size</th>
+                        <th>Barcode</th>
+                        <th className="num">Price</th>
+                        <th className="num" style={{ color: "var(--primary-ink)" }}>{activeShop.name} (Here)</th>
+                        <th className="num" style={{ color: "var(--ink-2)" }}>{otherShop.name}</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredCashierRows.map((r) => {
+                        const isOutThis = r.thisBranchStock <= 0;
+                        const isLowThis = r.thisBranchStock > 0 && r.thisBranchStock <= r.reorderLevel;
+                        return (
+                          <tr key={r.variantId}>
+                            <td style={{ fontWeight: "700", color: "var(--ink)" }}>{r.productName}</td>
+                            <td style={{ color: "var(--ink-2)" }}>{r.brandName}</td>
+                            <td style={{ color: "var(--ink-3)", fontSize: "13px" }}>{r.categoryName || r.productType}</td>
+                            <td style={{ color: "var(--ink-2)" }}>{r.colorName}</td>
+                            <td style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{r.sizeLabel}</td>
+                            <td style={{ fontVariantNumeric: "tabular-nums", fontSize: "13px", color: "var(--ink-3)" }}>
+                              {r.barcode}
+                            </td>
+                            <td className="num" style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
+                              {formatCurrency(r.sellingPrice)}
+                            </td>
+                            <td
+                              className="num"
+                              style={{
+                                fontWeight: "800",
+                                fontVariantNumeric: "tabular-nums",
+                                fontSize: "15px",
+                                color: isOutThis ? "var(--danger)" : isLowThis ? "var(--warning)" : "var(--ink)",
+                              }}
+                            >
+                              {r.thisBranchStock}
+                            </td>
+                            <td
+                              className="num"
+                              style={{
+                                fontWeight: "700",
+                                fontVariantNumeric: "tabular-nums",
+                                fontSize: "14px",
+                                color: r.otherBranchStock > 0 ? "var(--ink-2)" : "var(--ink-3)",
+                              }}
+                            >
+                              {r.otherBranchStock}
+                            </td>
+                            <td>
+                              <span
+                                className={`badge ${
+                                  isOutThis
+                                    ? r.otherBranchStock > 0
+                                      ? "badge-warning"
+                                      : "badge-danger"
+                                    : isLowThis
+                                    ? "badge-warning"
+                                    : "badge-success"
+                                }`}
+                              >
+                                {isOutThis
+                                  ? r.otherBranchStock > 0
+                                    ? `Other branch: ${r.otherBranchStock}`
+                                    : "Out of stock"
+                                  : isLowThis
+                                  ? `Low (≤${r.reorderLevel})`
+                                  : "In stock"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Mobile Cards View */}
+              <div
+                className="mobile-only"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
+                {filteredCashierRows.map((r) => {
+                  const isOutThis = r.thisBranchStock <= 0;
+                  return (
+                    <div
+                      key={r.variantId}
+                      style={{
+                        background: "var(--surface)",
+                        border: "1px solid var(--line)",
+                        borderRadius: "var(--radius-tile)",
+                        padding: "14px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "6px",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div>
+                          <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>{r.brandName} &bull; {r.categoryName}</div>
+                          <div style={{ fontSize: "15px", fontWeight: "700", color: "var(--ink)" }}>{r.productName}</div>
+                        </div>
+                        <div style={{ fontSize: "15px", fontWeight: "800", color: "var(--primary)" }}>
+                          {formatCurrency(r.sellingPrice)}
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: "13px", color: "var(--ink-2)" }}>
+                        Colour: <strong>{r.colorName}</strong> | Size: <strong>{r.sizeLabel}</strong>
+                      </div>
+                      <div style={{ fontSize: "12px", color: "var(--ink-3)", fontVariantNumeric: "tabular-nums" }}>
+                        Barcode: {r.barcode} | SKU: {r.sku}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: "8px",
+                          marginTop: "6px",
+                          paddingTop: "8px",
+                          borderTop: "1px solid var(--line)",
+                          fontSize: "13px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            padding: "6px 8px",
+                            background: isOutThis ? "var(--danger-soft)" : "var(--primary-soft)",
+                            borderRadius: "6px",
+                            textAlign: "center",
+                          }}
+                        >
+                          <div style={{ fontSize: "11px", color: "var(--ink-2)" }}>This Branch</div>
+                          <div style={{ fontSize: "16px", fontWeight: "800", color: isOutThis ? "var(--danger)" : "var(--primary-ink)" }}>
+                            {r.thisBranchStock}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            padding: "6px 8px",
+                            background: "var(--surface-sunken)",
+                            borderRadius: "6px",
+                            textAlign: "center",
+                          }}
+                        >
+                          <div style={{ fontSize: "11px", color: "var(--ink-2)" }}>{otherShop.name}</div>
+                          <div style={{ fontSize: "16px", fontWeight: "800", color: "var(--ink)" }}>
+                            {r.otherBranchStock}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── SUPER ADMIN TAB 1: CENTRAL STOCK TABLE ── */}
+      {isSuperAdmin && activeTab === "CENTRAL_STOCK" && (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
+          {filteredCentralRows.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--ink-2)", fontSize: "14px" }}>
+              No inventory rows found matching criteria.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table className="pos-table">
+                <thead>
+                  <tr>
+                    <th>Item model</th>
+                    <th>Brand</th>
+                    <th>Colour & Size</th>
+                    <th>Barcode</th>
+                    <th className="num">RightWay</th>
+                    <th className="num">Mega</th>
+                    <th className="num" style={{ color: "var(--primary-ink)" }}>Total Units</th>
+                    <th className="num">Cost Price</th>
+                    <th className="num">Selling Price</th>
+                    <th className="num">Retail Val.</th>
+                    <th className="num">Cost Val.</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCentralRows.map((r) => {
+                    const isOut = r.totalStock <= 0;
+                    const isLow = r.totalStock > 0 && r.totalStock <= r.reorderLevel;
+                    return (
+                      <tr key={r.variantId}>
+                        <td style={{ fontWeight: "700", color: "var(--ink)" }}>{r.productName}</td>
+                        <td style={{ color: "var(--ink-2)" }}>{r.brandName}</td>
+                        <td style={{ color: "var(--ink-2)" }}>{r.colorName} - {r.sizeLabel}</td>
+                        <td style={{ fontVariantNumeric: "tabular-nums", fontSize: "13px", color: "var(--ink-3)" }}>
+                          {r.barcode}
+                        </td>
+                        <td className="num" style={{ fontVariantNumeric: "tabular-nums", fontWeight: "600" }}>
+                          {r.rightWayStock}
+                        </td>
+                        <td className="num" style={{ fontVariantNumeric: "tabular-nums", fontWeight: "600" }}>
+                          {r.megaStock}
+                        </td>
+                        <td className="num" style={{ fontVariantNumeric: "tabular-nums", fontWeight: "800", fontSize: "15px", color: "var(--primary-ink)" }}>
+                          {r.totalStock}
+                        </td>
+                        <td className="num" style={{ fontVariantNumeric: "tabular-nums", color: "var(--ink-2)" }}>
+                          {formatCurrency(r.referenceCostPrice)}
+                        </td>
+                        <td className="num" style={{ fontVariantNumeric: "tabular-nums", fontWeight: "600" }}>
+                          {formatCurrency(r.sellingPrice)}
+                        </td>
+                        <td className="num" style={{ fontVariantNumeric: "tabular-nums", color: "var(--primary)" }}>
+                          {formatCurrency(r.retailValuation)}
+                        </td>
+                        <td className="num" style={{ fontVariantNumeric: "tabular-nums", color: "var(--ink-2)" }}>
+                          {formatCurrency(r.costValuation)}
+                        </td>
+                        <td>
+                          <span className={`badge ${isOut ? "badge-danger" : isLow ? "badge-warning" : "badge-success"}`}>
+                            {isOut ? "Out of stock" : isLow ? `Low (≤${r.reorderLevel})` : "In stock"}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              setSelectedVariantId(r.variantId);
+                              setAdjustQuantity("1");
+                              setAdjustReason("");
+                              setIsAdjustModalOpen(true);
+                            }}
+                            style={{ height: "32px", fontSize: "12px", padding: "0 8px" }}
+                          >
+                            Adjust
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── SUPER ADMIN TAB 2: STOCK MOVEMENTS AUDIT LOG ── */}
+      {isSuperAdmin && activeTab === "MOVEMENTS" && (
         <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
           {movements.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--ink-3)", fontSize: "14px" }}>
-              No stock movements recorded yet for this branch. Stock movements are created on sales, purchases, transfers, and adjustments.
+              No stock movements recorded yet for this branch.
             </div>
           ) : (
             <div style={{ overflowX: "auto" }}>
@@ -437,6 +929,10 @@ export function InventoryView() {
                                 ? "badge-primary"
                                 : m.type === "PURCHASE_IN"
                                 ? "badge-success"
+                                : m.type === "TRANSFER_IN"
+                                ? "badge-success"
+                                : m.type === "TRANSFER_OUT"
+                                ? "badge-warning"
                                 : m.type === "DAMAGE"
                                 ? "badge-danger"
                                 : "badge-neutral"
@@ -471,8 +967,8 @@ export function InventoryView() {
         </div>
       )}
 
-      {/* TAB 3: PHYSICAL STOCK COUNTS (Section 6.3) */}
-      {activeTab === "COUNT" && (
+      {/* ── SUPER ADMIN TAB 3: PHYSICAL STOCK COUNTS ── */}
+      {isSuperAdmin && activeTab === "COUNT" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {/* Active Counting Session Banner */}
           {activeCountSession && (
@@ -502,15 +998,6 @@ export function InventoryView() {
                 </div>
 
                 <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => setIsCameraScanOpen(true)}
-                    style={{ height: "42px", display: "flex", alignItems: "center", gap: "6px" }}
-                  >
-                    <Camera size={16} />
-                    <span>Camera Scan</span>
-                  </button>
-
                   <button
                     className="btn btn-primary"
                     disabled={isSubmitting}
@@ -545,53 +1032,17 @@ export function InventoryView() {
                           <td style={{ color: "var(--ink-2)" }}>{v.colorNameCache} - {v.sizeLabelCache}</td>
                           <td style={{ fontVariantNumeric: "tabular-nums", color: "var(--ink-3)" }}>{v.barcode}</td>
                           <td className="num">
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "6px" }}>
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() =>
-                                  setCountedQuantities((prev) => ({
-                                    ...prev,
-                                    [v.id]: Math.max(0, (prev[v.id] || 0) - 1),
-                                  }))
-                                }
-                                style={{ width: "32px", height: "32px", padding: 0 }}
-                              >
-                                -
-                              </button>
-                              <input
-                                type="number"
-                                min="0"
-                                value={countVal}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value) || 0;
-                                  setCountedQuantities((prev) => ({
-                                    ...prev,
-                                    [v.id]: Math.max(0, val),
-                                  }));
-                                }}
-                                style={{
-                                  width: "54px",
-                                  height: "32px",
-                                  textAlign: "center",
-                                  fontWeight: "700",
-                                  border: "1px solid var(--line-strong)",
-                                  borderRadius: "6px",
-                                  fontVariantNumeric: "tabular-nums",
-                                }}
-                              />
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() =>
-                                  setCountedQuantities((prev) => ({
-                                    ...prev,
-                                    [v.id]: (prev[v.id] || 0) + 1,
-                                  }))
-                                }
-                                style={{ width: "32px", height: "32px", padding: 0 }}
-                              >
-                                +
-                              </button>
-                            </div>
+                            <input
+                              type="number"
+                              min="0"
+                              value={countVal}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                setCountedQuantities((prev) => ({ ...prev, [v.id]: Math.max(0, val) }));
+                              }}
+                              className="pos-input"
+                              style={{ width: "80px", textAlign: "right", height: "36px" }}
+                            />
                           </td>
                         </tr>
                       );
@@ -602,15 +1053,16 @@ export function InventoryView() {
             </div>
           )}
 
-          {/* Past Stock Counts List */}
+          {/* Past Stock Count Sessions */}
           <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", fontWeight: "700", fontSize: "16px", color: "var(--ink)" }}>
-              Stock Count History
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
+                Stock Count Register ({stockCounts.length})
+              </h3>
             </div>
-
             {stockCounts.length === 0 ? (
-              <div style={{ padding: "36px", textAlign: "center", color: "var(--ink-3)", fontSize: "14px" }}>
-                No physical stock counts recorded for this branch yet. Click "New stock count" to initiate a blind stocktake.
+              <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--ink-3)", fontSize: "14px" }}>
+                No stock counts recorded yet for this branch. Click &quot;New stock count&quot; to initiate a physical audit.
               </div>
             ) : (
               <div style={{ overflowX: "auto" }}>
@@ -618,19 +1070,19 @@ export function InventoryView() {
                   <thead>
                     <tr>
                       <th>Count #</th>
-                      <th>Date</th>
                       <th>Scope</th>
                       <th>Status</th>
-                      <th>Initiator</th>
-                      <th className="num">Discrepancy items</th>
-                      <th className="num">Action</th>
+                      <th>Initiated at / by</th>
+                      <th>Submitted at / by</th>
+                      <th className="num">Variance items</th>
+                      <th>Approved by</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {stockCounts.map((sc) => (
                       <tr key={sc.id}>
                         <td style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>{sc.countNumber}</td>
-                        <td style={{ fontSize: "13px", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{formatDate(sc.snapshotAt)}</td>
                         <td>{sc.scope}</td>
                         <td>
                           <span
@@ -639,32 +1091,31 @@ export function InventoryView() {
                                 ? "badge-success"
                                 : sc.status === "SUBMITTED"
                                 ? "badge-warning"
-                                : sc.status === "COUNTING"
-                                ? "badge-primary"
                                 : "badge-neutral"
                             }`}
                           >
                             {sc.status}
                           </span>
                         </td>
-                        <td style={{ fontSize: "13px" }}>{sc.initiatedByName}</td>
-                        <td className="num" style={{ fontVariantNumeric: "tabular-nums", fontWeight: "700" }}>
-                          {sc.totalVarianceItems} lines
+                        <td style={{ fontSize: "13px", color: "var(--ink-2)" }}>
+                          {formatDate(sc.snapshotAt)} &bull; {sc.initiatedByName}
                         </td>
-                        <td className="num">
-                          {sc.status === "SUBMITTED" && canApproveCount && (
+                        <td style={{ fontSize: "13px", color: "var(--ink-2)" }}>
+                          {sc.submittedAt ? formatDate(sc.submittedAt) : "-"}
+                        </td>
+                        <td className="num" style={{ fontWeight: "700", color: sc.totalVarianceItems > 0 ? "var(--danger)" : "var(--success)" }}>
+                          {sc.totalVarianceItems}
+                        </td>
+                        <td style={{ fontSize: "13px" }}>{sc.approvedByName || "-"}</td>
+                        <td>
+                          {sc.status === "SUBMITTED" && isSuperAdmin && (
                             <button
                               className="btn btn-primary btn-sm"
                               onClick={() => handleApproveCount(sc)}
-                              style={{ height: "32px", fontSize: "12px" }}
+                              style={{ height: "32px", fontSize: "12px", padding: "0 10px" }}
                             >
-                              Approve count
+                              Approve reconciliation
                             </button>
-                          )}
-                          {sc.status === "APPROVED" && (
-                            <span style={{ fontSize: "12px", color: "var(--success)", fontWeight: "600" }}>
-                              Reconciled
-                            </span>
                           )}
                         </td>
                       </tr>
@@ -677,158 +1128,113 @@ export function InventoryView() {
         </div>
       )}
 
-      {/* Start Count Modal */}
-      {isStartCountModalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(16,24,40,0.6)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "var(--surface)", width: "100%", maxWidth: "440px", borderRadius: "16px", padding: "24px", display: "flex", flexDirection: "column", gap: "16px", boxShadow: "var(--shadow-float)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ fontSize: "18px", fontWeight: "700", margin: 0 }}>Start New Stock Count</h3>
-              <button onClick={() => setIsStartCountModalOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-2)" }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <p style={{ fontSize: "13px", color: "var(--ink-2)", margin: 0 }}>
-              Initiates a blind physical stock count for {activeShop.name}. Expected quantities will be hidden from staff during counting.
-            </p>
-
-            <div>
-              <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>Count Scope</label>
-              <select
-                className="input-field"
-                value={countScope}
-                onChange={(e) => setCountScope(e.target.value as any)}
-                style={{ width: "100%", height: "42px" }}
+      {/* ── MODAL: ADJUST STOCK (SUPER ADMIN ONLY) ── */}
+      {isAdjustModalOpen && isSuperAdmin && (
+        <div className="modal-backdrop">
+          <div className="modal-card" style={{ maxWidth: "480px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h3 style={{ fontSize: "18px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
+                Adjust Physical Stock
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsAdjustModalOpen(false)}
+                style={{ background: "transparent", border: "none", cursor: "pointer" }}
               >
-                <option value="ALL">All Footwear in Shop</option>
-                <option value="BRAND">By Brand</option>
-                <option value="CATEGORY">By Category</option>
-              </select>
-            </div>
-
-            {countScope === "BRAND" && (
-              <div>
-                <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>Select Brand</label>
-                <select
-                  className="input-field"
-                  value={countScopeFilter}
-                  onChange={(e) => setCountScopeFilter(e.target.value)}
-                  style={{ width: "100%", height: "42px" }}
-                >
-                  <option value="">Select a brand...</option>
-                  {brands.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {countScope === "CATEGORY" && (
-              <div>
-                <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>Select Category</label>
-                <select
-                  className="input-field"
-                  value={countScopeFilter}
-                  onChange={(e) => setCountScopeFilter(e.target.value)}
-                  style={{ width: "100%", height: "42px" }}
-                >
-                  <option value="">Select a category...</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" }}>
-              <button className="btn btn-secondary" onClick={() => setIsStartCountModalOpen(false)}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleStartCount} disabled={isSubmitting}>
-                {isSubmitting ? "Starting..." : "Begin Count"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Manual Stock Adjustment Modal */}
-      {isAdjustModalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(16,24,40,0.6)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "var(--surface)", width: "100%", maxWidth: "480px", borderRadius: "16px", padding: "24px", display: "flex", flexDirection: "column", gap: "16px", boxShadow: "var(--shadow-float)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ fontSize: "18px", fontWeight: "700", margin: 0 }}>Manual Stock Adjustment</h3>
-              <button onClick={() => setIsAdjustModalOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-2)" }}>
-                <X size={20} />
+                <X size={20} color="var(--ink-3)" />
               </button>
             </div>
 
             <form onSubmit={handleAdjustSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               <div>
-                <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>Shoe Variant</label>
+                <label className="pos-label">Branch</label>
                 <select
-                  required
-                  className="input-field"
-                  value={selectedVariantId}
-                  onChange={(e) => setSelectedVariantId(e.target.value)}
-                  style={{ width: "100%", height: "42px" }}
+                  value={adjustShopId}
+                  onChange={(e) => setAdjustShopId(e.target.value)}
+                  className="pos-input"
+                  style={{ height: "42px" }}
                 >
-                  <option value="">Select shoe variant...</option>
-                  {variants.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.productNameCache} ({v.colorNameCache}, {v.sizeLabelCache}) &bull; Stock: {invMap[v.id]?.quantityOnHand || 0}
+                  {shops.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code})
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>Action</label>
-                  <select
-                    className="input-field"
-                    value={adjustType}
-                    onChange={(e) => setAdjustType(e.target.value as any)}
-                    style={{ width: "100%", height: "42px" }}
-                  >
-                    <option value="ADJUSTMENT_IN">Add (+) Stock</option>
-                    <option value="ADJUSTMENT_OUT">Deduct (-) Stock</option>
-                    <option value="DAMAGE">Write off as Damaged</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>Quantity</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    className="input-field"
-                    value={adjustQuantity}
-                    onChange={(e) => setAdjustQuantity(e.target.value)}
-                    style={{ width: "100%", height: "42px" }}
-                  />
-                </div>
+              <div>
+                <label className="pos-label">Product variant</label>
+                <select
+                  value={selectedVariantId}
+                  onChange={(e) => setSelectedVariantId(e.target.value)}
+                  className="pos-input"
+                  style={{ height: "42px" }}
+                  required
+                >
+                  <option value="">Select a variant...</option>
+                  {variants.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.productNameCache} - {v.colorNameCache} (Size: {v.sizeLabelCache}) [{v.sku}]
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>Mandatory Reason</label>
-                <textarea
+                <label className="pos-label">Adjustment type</label>
+                <select
+                  value={adjustType}
+                  onChange={(e) => setAdjustType(e.target.value as any)}
+                  className="pos-input"
+                  style={{ height: "42px" }}
+                >
+                  <option value="ADJUSTMENT_IN">Stock In (Found inventory / Discrepancy +)</option>
+                  <option value="ADJUSTMENT_OUT">Stock Out (Shrinkage / Missing inventory -)</option>
+                  <option value="DAMAGE">Damaged Goods (Defective write-off -)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="pos-label">Quantity</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={adjustQuantity}
+                  onChange={(e) => setAdjustQuantity(e.target.value)}
+                  className="pos-input"
+                  style={{ height: "42px" }}
                   required
-                  rows={3}
-                  className="input-field"
-                  placeholder="Reason for adjusting stock (e.g. damaged during unboxing, supplier sample received)..."
-                  value={adjustReason}
-                  onChange={(e) => setAdjustReason(e.target.value)}
-                  style={{ width: "100%", padding: "10px" }}
                 />
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsAdjustModalOpen(false)}>
+              <div>
+                <label className="pos-label">Reason / Justification</label>
+                <textarea
+                  value={adjustReason}
+                  onChange={(e) => setAdjustReason(e.target.value)}
+                  placeholder="Detailed explanation for stock audit trail..."
+                  className="pos-input"
+                  style={{ height: "80px", resize: "none" }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsAdjustModalOpen(false)}
+                  style={{ height: "42px" }}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-                  {isSubmitting ? "Saving..." : "Apply Adjustment"}
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isSubmitting}
+                  style={{ height: "42px" }}
+                >
+                  Confirm adjustment
                 </button>
               </div>
             </form>
@@ -836,23 +1242,112 @@ export function InventoryView() {
         </div>
       )}
 
-      {/* Camera Barcode Scanner for Stock Count */}
-      <CameraScannerModal
-        isOpen={isCameraScanOpen}
-        onClose={() => setIsCameraScanOpen(false)}
-        onScan={(code) => {
-          const found = variants.find((v) => v.barcode === code || v.sku.toLowerCase() === code.toLowerCase());
-          if (found) {
-            setCountedQuantities((prev) => ({
-              ...prev,
-              [found.id]: (prev[found.id] || 0) + 1,
-            }));
-            showToast(`Scanned ${found.productNameCache} (${found.sizeLabelCache}) & incremented count!`, "success");
-          } else {
-            showToast(`No shoe matched barcode: ${code}`, "error");
-          }
-        }}
-      />
+      {/* ── MODAL: START STOCK COUNT (SUPER ADMIN) ── */}
+      {isStartCountModalOpen && isSuperAdmin && (
+        <div className="modal-backdrop">
+          <div className="modal-card" style={{ maxWidth: "440px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h3 style={{ fontSize: "18px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
+                Initiate Physical Stock Count
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsStartCountModalOpen(false)}
+                style={{ background: "transparent", border: "none", cursor: "pointer" }}
+              >
+                <X size={20} color="var(--ink-3)" />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div>
+                <label className="pos-label">Scope</label>
+                <select
+                  value={countScope}
+                  onChange={(e) => setCountScope(e.target.value as any)}
+                  className="pos-input"
+                  style={{ height: "42px" }}
+                >
+                  <option value="ALL">Entire Branch Catalogue (All Items)</option>
+                  <option value="BRAND">Filter by Specific Brand</option>
+                  <option value="CATEGORY">Filter by Specific Category</option>
+                </select>
+              </div>
+
+              {countScope === "BRAND" && (
+                <div>
+                  <label className="pos-label">Select Brand</label>
+                  <select
+                    value={countScopeFilter}
+                    onChange={(e) => setCountScopeFilter(e.target.value)}
+                    className="pos-input"
+                    style={{ height: "42px" }}
+                  >
+                    <option value="">Select a brand...</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.name}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {countScope === "CATEGORY" && (
+                <div>
+                  <label className="pos-label">Select Category</label>
+                  <select
+                    value={countScopeFilter}
+                    onChange={(e) => setCountScopeFilter(e.target.value)}
+                    className="pos-input"
+                    style={{ height: "42px" }}
+                  >
+                    <option value="">Select a category...</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsStartCountModalOpen(false)}
+                  style={{ height: "42px" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={isSubmitting}
+                  onClick={handleStartCount}
+                  style={{ height: "42px" }}
+                >
+                  Start count session
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CAMERA SCANNER MODAL ── */}
+      {isCameraScanOpen && (
+        <CameraScannerModal
+          isOpen={isCameraScanOpen}
+          onClose={() => setIsCameraScanOpen(false)}
+          onScan={(code) => {
+            setIsCameraScanOpen(false);
+            setSearchQuery(code);
+            showToast(`Scanned barcode: ${code}`, "info");
+          }}
+        />
+      )}
     </div>
   );
 }

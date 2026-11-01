@@ -220,7 +220,7 @@ export function resetLocalStoreForTesting() {
   nodeStore = null;
 }
 
-function loadLocalStore(): LocalStoreState {
+export function loadLocalStore(): LocalStoreState {
   if (typeof window === "undefined") {
     if (!nodeStore) {
       nodeStore = getInitialStore();
@@ -312,7 +312,7 @@ function loadLocalStore(): LocalStoreState {
   }
 }
 
-function saveLocalStore(state: LocalStoreState) {
+export function saveLocalStore(state: LocalStoreState) {
   if (typeof window === "undefined") {
     nodeStore = state;
     return;
@@ -2432,6 +2432,334 @@ export async function receiveTransfer(params: {
   }
 
   return transfer;
+}
+
+export interface QuickTransferParams {
+  fromShopId: string;
+  toShopId: string;
+  items: { variantId: string; quantity: number }[];
+  userId: string;
+  userName: string;
+  notes?: string;
+  idempotencyKey?: string;
+}
+
+export async function quickTransferStock(params: QuickTransferParams): Promise<StockTransfer> {
+  const store = loadLocalStore();
+  const caller = store.users.find((u) => u.uid === params.userId);
+
+  if (caller && !can(caller, "transfers.quick")) {
+    throw new Error("You do not have permission to execute quick transfers.");
+  }
+  if (caller?.role === "CASHIER" && caller.allowedShopIds && !caller.allowedShopIds.includes(params.fromShopId)) {
+    throw new Error("Cashiers can only transfer stock from their own branch.");
+  }
+
+  if (params.fromShopId === params.toShopId) {
+    throw new Error("Origin and destination branches must be different.");
+  }
+
+  if (!params.items || params.items.length === 0) {
+    throw new Error("At least one product variant must be selected for transfer.");
+  }
+
+  // Idempotency check: if transfer with this key already exists, return it
+  if (params.idempotencyKey) {
+    const existing = store.transfers.find((t) => t.idempotencyKey === params.idempotencyKey);
+    if (existing) {
+      return existing;
+    }
+  }
+
+  // Validate quantities and source stock availability for all items
+  for (const it of params.items) {
+    if (!it.quantity || it.quantity <= 0) {
+      throw new Error("Transfer quantity must be greater than zero.");
+    }
+    const srcInvKey = `${params.fromShopId}_${it.variantId}`;
+    const onHand = store.inventory[srcInvKey]?.quantityOnHand || 0;
+    if (onHand < it.quantity) {
+      const variant = store.variants.find((v) => v.id === it.variantId);
+      const name = variant ? variant.productNameCache : it.variantId;
+      throw new Error(`Insufficient stock for ${name} at origin branch. Available: ${onHand}, Requested: ${it.quantity}`);
+    }
+  }
+
+  const transferNumber = getNextSequentialNumber("TRF", "transfer");
+  const transferId = params.idempotencyKey ? `trf_${params.idempotencyKey}` : `trf_${Date.now()}`;
+  const transferItems: StockTransferItem[] = [];
+  let totalQuantity = 0;
+  const now = Date.now();
+
+  // Atomic operation: deduct source, add destination, record movements
+  for (const it of params.items) {
+    const v = store.variants.find((item) => item.id === it.variantId);
+    const desc = v
+      ? `${v.productNameCache} - ${v.colorNameCache} - ${v.sizeLabelCache}`
+      : it.variantId;
+
+    // Source shop deduction
+    const srcInvKey = `${params.fromShopId}_${it.variantId}`;
+    const srcBefore = store.inventory[srcInvKey].quantityOnHand;
+    const srcAfter = srcBefore - it.quantity;
+    store.inventory[srcInvKey].quantityOnHand = srcAfter;
+    store.inventory[srcInvKey].lastMovementAt = now;
+
+    store.movements.push({
+      id: `mvt_${now}_trf_out_${it.variantId}_${Math.random().toString(36).substring(2, 7)}`,
+      shopId: params.fromShopId,
+      variantId: it.variantId,
+      productId: v?.productId || "",
+      type: "TRANSFER_OUT",
+      quantity: it.quantity,
+      direction: "OUT",
+      quantityBefore: srcBefore,
+      quantityAfter: srcAfter,
+      referenceType: "TRANSFER",
+      referenceId: transferId,
+      userId: params.userId,
+      createdAt: now,
+    });
+
+    // Destination shop addition (create inventory record if non-existent)
+    const destInvKey = `${params.toShopId}_${it.variantId}`;
+    if (!store.inventory[destInvKey]) {
+      store.inventory[destInvKey] = {
+        id: destInvKey,
+        shopId: params.toShopId,
+        variantId: it.variantId,
+        productId: v?.productId || "",
+        quantityOnHand: 0,
+        reorderLevel: 2,
+        lastMovementAt: now,
+      };
+    }
+    const destBefore = store.inventory[destInvKey].quantityOnHand;
+    const destAfter = destBefore + it.quantity;
+    store.inventory[destInvKey].quantityOnHand = destAfter;
+    store.inventory[destInvKey].lastMovementAt = now;
+
+    store.movements.push({
+      id: `mvt_${now}_trf_in_${it.variantId}_${Math.random().toString(36).substring(2, 7)}`,
+      shopId: params.toShopId,
+      variantId: it.variantId,
+      productId: v?.productId || "",
+      type: "TRANSFER_IN",
+      quantity: it.quantity,
+      direction: "IN",
+      quantityBefore: destBefore,
+      quantityAfter: destAfter,
+      referenceType: "TRANSFER",
+      referenceId: transferId,
+      userId: params.userId,
+      createdAt: now,
+    });
+
+    transferItems.push({
+      variantId: it.variantId,
+      productId: v?.productId || "",
+      dispatchedQuantity: it.quantity,
+      receivedQuantity: it.quantity,
+      variantDescriptionCache: desc,
+    });
+    totalQuantity += it.quantity;
+  }
+
+  const transfer: StockTransfer = {
+    id: transferId,
+    transferNumber,
+    sourceShopId: params.fromShopId,
+    destinationShopId: params.toShopId,
+    status: "RECEIVED",
+    mode: "QUICK",
+    items: transferItems,
+    totalQuantity,
+    dispatchedBy: params.userName || params.userId,
+    dispatchedAt: now,
+    receivedBy: params.userName || params.userId,
+    receivedAt: now,
+    notes: params.notes || null,
+    idempotencyKey: params.idempotencyKey || null,
+  };
+
+  store.transfers.push(transfer);
+
+  logAuditAction(store, {
+    userId: params.userId,
+    userEmailCache: params.userName || "Cashier",
+    action: "TRANSFER_QUICK",
+    entityType: "stockTransfers",
+    entityId: transferId,
+    shopId: params.fromShopId,
+    after: transfer,
+    reason: `Quick transfer ${transferNumber} of ${totalQuantity} pairs from ${params.fromShopId} to ${params.toShopId}`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await setDoc(doc(db, "stockTransfers", transferId), transfer);
+  } catch (e) {
+    console.warn("Firestore sync quick transfer error:", e);
+  }
+
+  return transfer;
+}
+
+export interface StockCheckRow {
+  variantId: string;
+  productId: string;
+  productName: string;
+  brandName: string;
+  categoryName: string;
+  productType?: string;
+  gender?: string;
+  colorName: string;
+  sizeLabel: string;
+  sku: string;
+  barcode: string;
+  sellingPrice: number;
+  thisBranchStock: number;
+  otherBranchStock: number;
+  totalStock: number;
+  reorderLevel: number;
+}
+
+export function getStockCheckRows(thisShopId: string, otherShopId: string): StockCheckRow[] {
+  const store = loadLocalStore();
+  const catMap = new Map(store.categories.map((c) => [c.id, c.name]));
+  const brandMap = new Map(store.brands.map((b) => [b.id, b.name]));
+  const productMap = new Map(store.products.map((p) => [p.id, p]));
+
+  return store.variants
+    .filter((v) => v.active !== false)
+    .map((v) => {
+      const p = productMap.get(v.productId);
+      const thisInv = store.inventory[`${thisShopId}_${v.id}`]?.quantityOnHand || 0;
+      const otherInv = store.inventory[`${otherShopId}_${v.id}`]?.quantityOnHand || 0;
+      const reorder = store.inventory[`${thisShopId}_${v.id}`]?.reorderLevel ?? 2;
+
+      return {
+        variantId: v.id,
+        productId: v.productId,
+        productName: v.productNameCache,
+        brandName: v.brandNameCache || (p ? brandMap.get(p.brandId) || "" : ""),
+        categoryName: p ? catMap.get(p.categoryId) || "" : "",
+        productType: v.productType || p?.productType || "FOOTWEAR",
+        gender: p?.gender,
+        colorName: v.colorNameCache,
+        sizeLabel: v.sizeLabelCache,
+        sku: v.sku,
+        barcode: v.barcode,
+        sellingPrice: v.sellingPrice,
+        thisBranchStock: thisInv,
+        otherBranchStock: otherInv,
+        totalStock: thisInv + otherInv,
+        reorderLevel: reorder,
+      };
+    });
+}
+
+export interface CentralStockRow {
+  variantId: string;
+  productId: string;
+  productName: string;
+  brandName: string;
+  categoryName: string;
+  productType?: string;
+  gender?: string;
+  colorName: string;
+  sizeLabel: string;
+  sku: string;
+  barcode: string;
+  sellingPrice: number;
+  referenceCostPrice: number;
+  rightWayStock: number;
+  megaStock: number;
+  totalStock: number;
+  reorderLevel: number;
+  retailValuation: number;
+  costValuation: number;
+}
+
+export interface CentralStockReport {
+  rows: CentralStockRow[];
+  totalUnits: number;
+  rightWayUnits: number;
+  megaUnits: number;
+  totalRetailValuation: number;
+  totalCostValuation: number;
+}
+
+export function getCentralStockReport(callingUser?: { role: string } | null): CentralStockReport {
+  if (callingUser && callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("Permission denied: Central stock report is restricted to Super Admin.");
+  }
+
+  const store = loadLocalStore();
+  const catMap = new Map(store.categories.map((c) => [c.id, c.name]));
+  const brandMap = new Map(store.brands.map((b) => [b.id, b.name]));
+  const productMap = new Map(store.products.map((p) => [p.id, p]));
+
+  let totalUnits = 0;
+  let rightWayUnits = 0;
+  let megaUnits = 0;
+  let totalRetailValuation = 0;
+  let totalCostValuation = 0;
+
+  const rows: CentralStockRow[] = store.variants
+    .filter((v) => v.active !== false)
+    .map((v) => {
+      const p = productMap.get(v.productId);
+      const rwStock = store.inventory[`rightway_${v.id}`]?.quantityOnHand || 0;
+      const megaStock = store.inventory[`mega_${v.id}`]?.quantityOnHand || 0;
+      const totalStock = rwStock + megaStock;
+      const reorderLevel = Math.max(
+        store.inventory[`rightway_${v.id}`]?.reorderLevel ?? 2,
+        store.inventory[`mega_${v.id}`]?.reorderLevel ?? 2
+      );
+      const cost = v.referenceCostPrice || 0;
+      const price = v.sellingPrice || 0;
+      const retailValuation = totalStock * price;
+      const costValuation = totalStock * cost;
+
+      totalUnits += totalStock;
+      rightWayUnits += rwStock;
+      megaUnits += megaStock;
+      totalRetailValuation += retailValuation;
+      totalCostValuation += costValuation;
+
+      return {
+        variantId: v.id,
+        productId: v.productId,
+        productName: v.productNameCache,
+        brandName: v.brandNameCache || (p ? brandMap.get(p.brandId) || "" : ""),
+        categoryName: p ? catMap.get(p.categoryId) || "" : "",
+        productType: v.productType || p?.productType || "FOOTWEAR",
+        gender: p?.gender,
+        colorName: v.colorNameCache,
+        sizeLabel: v.sizeLabelCache,
+        sku: v.sku,
+        barcode: v.barcode,
+        sellingPrice: price,
+        referenceCostPrice: cost,
+        rightWayStock: rwStock,
+        megaStock: megaStock,
+        totalStock,
+        reorderLevel,
+        retailValuation,
+        costValuation,
+      };
+    });
+
+  return {
+    rows,
+    totalUnits,
+    rightWayUnits,
+    megaUnits,
+    totalRetailValuation,
+    totalCostValuation,
+  };
 }
 
 // ==========================================

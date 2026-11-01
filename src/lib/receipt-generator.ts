@@ -536,6 +536,7 @@ export function renderTransferDispatchNoteHTML(
   sourceShop: Shop,
   destShop: Shop
 ): string {
+  const isQuick = transfer.mode === "QUICK";
   const itemRows = transfer.items
     .map(
       (it, idx) => `
@@ -543,7 +544,9 @@ export function renderTransferDispatchNoteHTML(
       <td style="padding: 6px 4px; text-align: center;">${idx + 1}</td>
       <td style="padding: 6px 4px; font-weight: 700;">${it.variantDescriptionCache}</td>
       <td style="padding: 6px 4px; text-align: center; font-weight: 900;">${it.dispatchedQuantity}</td>
-      <td style="padding: 6px 4px; text-align: center;">${it.receivedQuantity > 0 ? it.receivedQuantity : "[ &nbsp; ]"}</td>
+      <td style="padding: 6px 4px; text-align: center; font-weight: ${isQuick ? "900" : "normal"};">${
+        it.receivedQuantity > 0 ? it.receivedQuantity : isQuick ? it.dispatchedQuantity : "[ &nbsp; ]"
+      }</td>
     </tr>
   `
     )
@@ -560,7 +563,10 @@ export function renderTransferDispatchNoteHTML(
   return `
     <div style="font-family: Arial, sans-serif; width: 440px; margin: 0 auto; padding: 18px; color: #000; line-height: 1.4; background: #fff;">
       <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
-        <h2 style="margin: 0; font-size: 18px; font-weight: 900; text-transform: uppercase;">INTER-SHOP STOCK TRANSFER NOTE</h2>
+        <h2 style="margin: 0; font-size: 18px; font-weight: 900; text-transform: uppercase;">
+          ${isQuick ? "COMPLETED STOCK TRANSFER NOTE" : "INTER-SHOP STOCK TRANSFER NOTE"}
+        </h2>
+        ${isQuick ? `<div style="font-size: 11px; font-weight: 700; color: #10b981; margin-top: 2px;">COMPLETED TRANSFER (IMMEDIATE RECEIPT)</div>` : ""}
         <div style="text-align: center; margin: 6px 0;">${transferBarcode}</div>
       </div>
 
@@ -578,15 +584,17 @@ export function renderTransferDispatchNoteHTML(
       </div>
 
       <div style="font-size: 12px; margin-bottom: 10px; display: flex; justify-content: space-between;">
-        <span><strong>Dispatched Date:</strong> ${formatDate(transfer.dispatchedAt)}</span>
+        <span><strong>${isQuick ? "Transfer Date:" : "Dispatched Date:"}</strong> ${formatDate(transfer.dispatchedAt)}</span>
         <span><strong>Status:</strong> ${transfer.status}</span>
       </div>
+
+      ${transfer.notes ? `<div style="font-size: 12px; margin-bottom: 10px; padding: 6px 8px; background: #fef3c7; border: 1px solid #f59e0b;"><strong>Note:</strong> ${transfer.notes}</div>` : ""}
 
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; border: 1px solid #000;">
         <thead>
           <tr style="background: #000; color: #fff; font-size: 11px; text-align: left;">
             <th style="padding: 6px 4px; width: 24px; text-align: center;">#</th>
-            <th style="padding: 6px 4px;">Footwear Variant</th>
+            <th style="padding: 6px 4px;">Item Variant</th>
             <th style="padding: 6px 4px; text-align: center; width: 70px;">Dispatched</th>
             <th style="padding: 6px 4px; text-align: center; width: 70px;">Received</th>
           </tr>
@@ -596,9 +604,9 @@ export function renderTransferDispatchNoteHTML(
         </tbody>
         <tfoot>
           <tr style="font-weight: 900; font-size: 13px; border-top: 2px solid #000; background: #f9fafb;">
-            <td colspan="2" style="padding: 8px 4px;">TOTAL PAIRS:</td>
+            <td colspan="2" style="padding: 8px 4px;">TOTAL PAIRS / UNITS:</td>
             <td style="padding: 8px 4px; text-align: center;">${transfer.totalQuantity}</td>
-            <td style="padding: 8px 4px; text-align: center;">-</td>
+            <td style="padding: 8px 4px; text-align: center;">${isQuick ? transfer.totalQuantity : "-"}</td>
           </tr>
         </tfoot>
       </table>
@@ -612,12 +620,14 @@ export function renderTransferDispatchNoteHTML(
         <div>
           __________________________<br/>
           <strong>Received By (Destination)</strong><br/>
-          <span>${transfer.receivedBy || "Pending Reception"}</span>
+          <span>${transfer.receivedBy || (isQuick ? transfer.dispatchedBy : "Pending Reception")}</span>
         </div>
       </div>
     </div>
   `;
 }
+
+export const renderTransferNoteHTML = renderTransferDispatchNoteHTML;
 
 // ── 6. THERMAL BARCODE LABELS (50x30mm, 50x25mm, 40x30mm & A4 Sheet) ───────
 export type BarcodeLabelSize = "50x30mm" | "50x25mm" | "40x30mm";

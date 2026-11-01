@@ -9,6 +9,7 @@ import {
   getCategories,
   getInventoryForShop,
   completeSale,
+  getShops,
 } from "@/lib/firestore-service";
 import { formatCurrency, renderSaleReceiptHTML } from "@/lib/receipt-generator";
 import { Product, ProductVariant, PaymentEntry, PaymentMethod, ProductType } from "@/types";
@@ -57,6 +58,7 @@ interface CartItem {
 
 export function PosView() {
   const {
+    shops,
     activeShop,
     currentUser,
     setActiveView,
@@ -203,6 +205,21 @@ export function PosView() {
     });
     return map;
   }, [inventoryList]);
+
+  const otherShop = useMemo(() => {
+    const allShops = getShops();
+    return allShops.find((s) => s.id !== activeShop.id);
+  }, [activeShop.id]);
+
+  const otherStockMap = useMemo(() => {
+    if (!otherShop) return {};
+    const otherInv = getInventoryForShop(otherShop.id);
+    const map: Record<string, number> = {};
+    otherInv.forEach((inv) => {
+      map[inv.variantId] = inv.quantityOnHand;
+    });
+    return map;
+  }, [otherShop, dataVersion]);
 
   // Categories list dynamically filtered by selected product type
   const categories = useMemo(() => {
@@ -775,6 +792,7 @@ export function PosView() {
             ) : (
               filteredVariants.map((variant) => {
                 const onHand = stockMap[variant.id] || 0;
+                const otherOnHand = otherStockMap[variant.id] || 0;
                 const isOut  = onHand <= 0;
                 const isLow  = onHand > 0 && onHand <= 3;
                 return (
@@ -799,7 +817,7 @@ export function PosView() {
                     <div style={{ fontSize: "14px", color: "var(--ink-2)" }}>{variant.colorNameCache}</div>
                     <div style={{ fontSize: "14px", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{variant.sizeLabelCache}</div>
                     <div style={{ fontSize: "13px", color: isOut ? "var(--danger)" : isLow ? "var(--warning)" : "var(--ink-2)" }}>
-                      {isOut ? "Out of stock" : isLow ? `Only ${onHand} left` : `${onHand} in stock`}
+                      {isOut ? `Out of stock (Other branch: ${otherOnHand})` : isLow ? `Only ${onHand} left` : `${onHand} in stock`}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "10px", borderTop: "1px solid var(--line)", marginTop: "4px" }}>
                       <div className="text-price-tile">{formatCurrency(variant.sellingPrice)}</div>
