@@ -1139,8 +1139,15 @@ export function PosView() {
         isOpen={isCameraScannerOpen}
         onClose={() => setIsCameraScannerOpen(false)}
         onScan={(code) => {
-          setIsCameraScannerOpen(false);
-          processBarcode(code);
+          const found = variants.find(
+            (v) => v.barcode === code || v.sku.toLowerCase() === code.toLowerCase()
+          );
+          if (found) {
+            addToCart(found);
+            showToast(`Scanned & added ${found.productNameCache} (${found.sizeLabelCache})`, "success");
+          } else {
+            showToast(`No shoe matched barcode: ${code}`, "error");
+          }
         }}
       />
 
