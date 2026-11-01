@@ -420,6 +420,13 @@ export interface ShoeRepairOrder {
   shoeModel: string;
   shoeSize: string;
   shoeColor: string;
+  itemType?: "FOOTWEAR" | "BAG";
+  subType?: string;
+  brand?: string;
+  model?: string;
+  size?: string;
+  color?: string;
+  dimension?: string;
   isStorePurchased: boolean;
   linkedSaleId?: string | null;
   issueDescription: string;
@@ -439,6 +446,21 @@ export interface ShoeRepairOrder {
   deliveryPaymentMethod?: PaymentMethod | null;
   notes?: string;
   statusHistory: RepairStatusHistory[];
+  isWarranty?: boolean;
+  warrantyBasis?: "STORE_INVOICE" | "MANUAL";
+  warrantyInvoiceNumber?: string;
+  warrantyCardNumber?: string;
+  warrantyStatus?: "VERIFIED" | "UNVERIFIED" | "EXPIRED" | "NOT_FOUND";
+  warrantyCoverageNote?: string;
+  hasEstimate?: boolean;
+  needsReview?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: number | null;
+  reviewNote?: string | null;
+  isWarrantyConvertedToPaid?: boolean;
+  convertedToPaidBy?: string | null;
+  convertedToPaidAt?: number | null;
+  convertedToPaidReason?: string | null;
 }
 
 export type TransferStatus = "DISPATCHED" | "IN_TRANSIT" | "RECEIVED" | "CANCELLED";

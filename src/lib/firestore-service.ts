@@ -2142,17 +2142,31 @@ export async function createRepairOrder(params: {
   customerName: string;
   customerPhone: string;
   customerAddress?: string;
-  shoeBrand: string;
-  shoeModel: string;
-  shoeSize: string;
-  shoeColor: string;
-  isStorePurchased: boolean;
+  shoeBrand?: string;
+  shoeModel?: string;
+  shoeSize?: string;
+  shoeColor?: string;
+  itemType?: "FOOTWEAR" | "BAG";
+  subType?: string;
+  brand?: string;
+  model?: string;
+  size?: string;
+  color?: string;
+  dimension?: string;
+  isStorePurchased?: boolean;
   issueDescription: string;
-  estimatedCost: number;
-  advancePaid: number;
+  estimatedCost?: number;
+  advancePaid?: number;
   advancePaymentMethod?: "CASH" | "CARD" | "BANK_TRANSFER";
   promisedDate: number;
   notes?: string;
+  isWarranty?: boolean;
+  warrantyBasis?: "STORE_INVOICE" | "MANUAL";
+  warrantyInvoiceNumber?: string;
+  warrantyCardNumber?: string;
+  warrantyStatus?: "VERIFIED" | "UNVERIFIED" | "EXPIRED" | "NOT_FOUND";
+  warrantyCoverageNote?: string;
+  hasEstimate?: boolean;
 }): Promise<ShoeRepairOrder> {
   const store = loadLocalStore();
 
@@ -2161,7 +2175,36 @@ export async function createRepairOrder(params: {
   const repairNumber = getNextSequentialNumber(repPrefix, `${params.shopId}_rep`);
   const repairId = `rep_${Date.now()}`;
 
-  const balanceDue = Math.max(0, params.estimatedCost - params.advancePaid);
+  const itemType = params.itemType || "FOOTWEAR";
+  const brand = (params.brand || params.shoeBrand || "").trim();
+  const model = (params.model || params.shoeModel || "").trim();
+  const size = (params.size || params.shoeSize || "").trim();
+  const color = (params.color || params.shoeColor || "").trim();
+  const isWarranty = !!params.isWarranty;
+  const hasEstimate = isWarranty ? false : (params.hasEstimate !== false);
+
+  let estimatedCost = 0;
+  let advancePaid = 0;
+  let advancePaymentMethod = undefined;
+
+  if (!isWarranty && hasEstimate) {
+    estimatedCost = params.estimatedCost ?? 0;
+    advancePaid = params.advancePaid ?? 0;
+    advancePaymentMethod = advancePaid > 0 ? params.advancePaymentMethod : undefined;
+  }
+
+  const balanceDue = Math.max(0, estimatedCost - advancePaid);
+
+  let warrantyStatus = params.warrantyStatus;
+  let needsReview = false;
+  if (isWarranty) {
+    if (params.warrantyBasis === "MANUAL") {
+      warrantyStatus = "UNVERIFIED";
+      needsReview = true;
+    } else if (params.warrantyBasis === "STORE_INVOICE") {
+      warrantyStatus = params.warrantyStatus || "VERIFIED";
+    }
+  }
 
   const repair: ShoeRepairOrder = {
     id: repairId,
@@ -2172,28 +2215,45 @@ export async function createRepairOrder(params: {
     customerName: params.customerName,
     customerPhone: params.customerPhone,
     customerAddress: params.customerAddress || null,
-    shoeBrand: params.shoeBrand,
-    shoeModel: params.shoeModel,
-    shoeSize: params.shoeSize,
-    shoeColor: params.shoeColor,
-    isStorePurchased: params.isStorePurchased,
+    shoeBrand: brand,
+    shoeModel: model,
+    shoeSize: size,
+    shoeColor: color,
+    itemType,
+    subType: params.subType,
+    brand,
+    model,
+    size,
+    color,
+    dimension: params.dimension,
+    isStorePurchased: isWarranty && params.warrantyBasis === "STORE_INVOICE" ? true : !!params.isStorePurchased,
     issueDescription: params.issueDescription,
-    estimatedCost: params.estimatedCost,
-    advancePaid: params.advancePaid,
-    advancePaymentMethod: params.advancePaymentMethod,
-    finalCost: params.estimatedCost,
+    estimatedCost,
+    advancePaid,
+    advancePaymentMethod,
+    finalCost: isWarranty ? 0 : estimatedCost,
     balanceDue,
     status: "RECEIVED",
     receivedAt: Date.now(),
     promisedDate: params.promisedDate,
     notes: params.notes,
+    isWarranty,
+    warrantyBasis: params.warrantyBasis,
+    warrantyInvoiceNumber: params.warrantyInvoiceNumber,
+    warrantyCardNumber: params.warrantyCardNumber,
+    warrantyStatus,
+    warrantyCoverageNote: params.warrantyCoverageNote,
+    hasEstimate,
+    needsReview,
     statusHistory: [
       {
         from: "NEW",
         to: "RECEIVED",
         at: Date.now(),
         by: params.intakeCashierId,
-        notes: "Shoe received at counter",
+        notes: isWarranty
+          ? `Warranty claim intake (${params.warrantyBasis || "WARRANTY"})`
+          : "Item received at counter",
       },
     ],
   };
@@ -2207,7 +2267,7 @@ export async function createRepairOrder(params: {
     entityId: repairId,
     shopId: params.shopId,
     after: repair,
-    reason: `Repair job ${repairNumber} created for ${params.customerName}`,
+    reason: `Repair job ${repairNumber} created for ${params.customerName}${isWarranty ? " (WARRANTY)" : ""}`,
   });
 
   saveLocalStore(store);
@@ -2274,31 +2334,42 @@ export async function updateRepairStatus(params: {
 
 export async function deliverRepairOrder(params: {
   repairId: string;
-  finalCost: number;
+  finalCost?: number;
   deliveryCashierId: string;
   deliveryShiftId?: string;
-  deliveryPaymentMethod: "CASH" | "CARD" | "BANK_TRANSFER";
+  deliveryPaymentMethod?: "CASH" | "CARD" | "BANK_TRANSFER" | null;
 }): Promise<ShoeRepairOrder> {
   const store = loadLocalStore();
   const repair = store.repairs.find((r) => r.id === params.repairId);
   if (!repair) throw new Error("Repair order not found");
 
-  const balanceToCollect = Math.max(0, params.finalCost - repair.advancePaid);
+  let finalCost = 0;
+  let balanceToCollect = 0;
 
-  repair.finalCost = params.finalCost;
+  if (repair.isWarranty) {
+    finalCost = 0;
+    balanceToCollect = 0;
+  } else {
+    finalCost = params.finalCost !== undefined ? params.finalCost : (repair.finalCost || repair.estimatedCost);
+    balanceToCollect = Math.max(0, finalCost - repair.advancePaid);
+  }
+
+  repair.finalCost = finalCost;
   repair.balanceDue = 0;
   repair.status = "DELIVERED";
   repair.deliveredAt = Date.now();
   repair.deliveryCashierId = params.deliveryCashierId;
   repair.deliveryShiftId = params.deliveryShiftId;
-  repair.deliveryPaymentMethod = params.deliveryPaymentMethod;
+  repair.deliveryPaymentMethod = repair.isWarranty ? null : (params.deliveryPaymentMethod || "CASH");
 
   repair.statusHistory.push({
     from: "READY_FOR_PICKUP",
     to: "DELIVERED",
     at: Date.now(),
     by: params.deliveryCashierId,
-    notes: `Delivered to customer. Collected Rs. ${balanceToCollect} via ${params.deliveryPaymentMethod}`,
+    notes: repair.isWarranty
+      ? "Delivered to customer under warranty. No charge."
+      : `Delivered to customer. Collected Rs. ${balanceToCollect} via ${params.deliveryPaymentMethod || "CASH"}`,
   });
 
   logAuditAction(store, {
@@ -2309,7 +2380,9 @@ export async function deliverRepairOrder(params: {
     entityId: repair.id,
     shopId: repair.shopId,
     after: repair,
-    reason: `Delivered repair ${repair.repairNumber}. Balance settled: Rs. ${balanceToCollect}`,
+    reason: repair.isWarranty
+      ? `Delivered warranty repair ${repair.repairNumber}. No charge.`
+      : `Delivered repair ${repair.repairNumber}. Balance settled: Rs. ${balanceToCollect}`,
   });
 
   saveLocalStore(store);
@@ -2317,18 +2390,195 @@ export async function deliverRepairOrder(params: {
   try {
     await updateDoc(doc(db, "repairOrders", repair.id), {
       status: "DELIVERED",
-      finalCost: params.finalCost,
+      finalCost,
       balanceDue: 0,
       deliveredAt: repair.deliveredAt,
       deliveryCashierId: params.deliveryCashierId,
       deliveryShiftId: params.deliveryShiftId,
-      deliveryPaymentMethod: params.deliveryPaymentMethod,
+      deliveryPaymentMethod: repair.deliveryPaymentMethod,
       statusHistory: repair.statusHistory,
     });
   } catch (e) {
     console.warn("Firestore sync repair delivery error:", e);
   }
 
+  return repair;
+}
+
+export function verifyRepairWarranty(params: {
+  shopId: string;
+  invoiceNumber: string;
+  itemType: "FOOTWEAR" | "BAG";
+  callingUser: UserProfile;
+}): {
+  status: "VERIFIED" | "EXPIRED" | "NOT_FOUND";
+  sale?: Sale;
+  warrantyMonths: number;
+  expiryDate?: number;
+  saleDate?: number;
+  message: string;
+} {
+  const store = loadLocalStore();
+  const rawInvoice = params.invoiceNumber.trim();
+
+  // Audit lookup
+  const userId = ('uid' in params.callingUser ? params.callingUser.uid : (params.callingUser as any).id) || "user";
+  logAuditAction(store, {
+    userId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "User",
+    action: "WARRANTY_LOOKUP",
+    entityType: "sales",
+    entityId: rawInvoice,
+    shopId: params.shopId,
+    reason: `Warranty lookup for invoice ${rawInvoice} in branch ${params.shopId}`,
+  });
+  saveLocalStore(store);
+
+  const sale = store.sales.find(
+    (s) =>
+      s.shopId === params.shopId &&
+      (s.invoiceNumber?.toLowerCase() === rawInvoice.toLowerCase() ||
+        (s as any).saleNumber?.toLowerCase() === rawInvoice.toLowerCase())
+  );
+
+  const months =
+    params.itemType === "BAG"
+      ? (store.settings.warrantyMonthsBag ?? 12)
+      : (store.settings.warrantyMonthsFootwear ?? 6);
+
+  if (!sale) {
+    return {
+      status: "NOT_FOUND",
+      warrantyMonths: months,
+      message: `Invoice #${rawInvoice} was not found at this branch (${params.shopId}).`,
+    };
+  }
+
+  const saleDate = sale.createdAt;
+  const d = new Date(saleDate);
+  d.setMonth(d.getMonth() + months);
+  const expiryDate = d.getTime();
+
+  const isExpired = Date.now() > expiryDate;
+
+  return {
+    status: isExpired ? "EXPIRED" : "VERIFIED",
+    sale,
+    warrantyMonths: months,
+    saleDate,
+    expiryDate,
+    message: isExpired
+      ? `Warranty expired on ${new Date(expiryDate).toLocaleDateString("en-LK")} (${months} months warranty).`
+      : `Verified under warranty until ${new Date(expiryDate).toLocaleDateString("en-LK")} (${months} months warranty).`,
+  };
+}
+
+export async function convertWarrantyRepairToPaid(params: {
+  repairId: string;
+  estimatedCost: number;
+  callingUser: UserProfile;
+  reason: string;
+}): Promise<ShoeRepairOrder> {
+  const store = loadLocalStore();
+  const userId = ('uid' in params.callingUser ? params.callingUser.uid : (params.callingUser as any).id) || "user";
+
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can convert a warranty repair to paid");
+  }
+
+  const repair = store.repairs.find((r) => r.id === params.repairId);
+  if (!repair) throw new Error("Repair order not found");
+  if (!repair.isWarranty) throw new Error("Repair order is not under warranty");
+
+  repair.isWarranty = false;
+  repair.isWarrantyConvertedToPaid = true;
+  repair.convertedToPaidBy = userId;
+  repair.convertedToPaidAt = Date.now();
+  repair.convertedToPaidReason = params.reason;
+  repair.estimatedCost = params.estimatedCost;
+  repair.finalCost = params.estimatedCost;
+  repair.balanceDue = params.estimatedCost;
+  repair.hasEstimate = true;
+  repair.needsReview = false;
+
+  repair.statusHistory.push({
+    from: repair.status,
+    to: repair.status,
+    at: Date.now(),
+    by: userId,
+    notes: `Warranty converted to paid repair by Super Admin. Reason: ${params.reason}. Fee: Rs. ${params.estimatedCost}`,
+  });
+
+  logAuditAction(store, {
+    userId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "REPAIR_CONVERT_WARRANTY",
+    entityType: "repairOrders",
+    entityId: repair.id,
+    shopId: repair.shopId,
+    before: { isWarranty: true, estimatedCost: 0 },
+    after: { isWarranty: false, estimatedCost: params.estimatedCost, reason: params.reason },
+    reason: `Warranty converted to paid repair: ${params.reason}`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await updateDoc(doc(db, "repairOrders", repair.id), {
+      isWarranty: false,
+      isWarrantyConvertedToPaid: true,
+      convertedToPaidBy: userId,
+      convertedToPaidAt: repair.convertedToPaidAt,
+      convertedToPaidReason: params.reason,
+      estimatedCost: repair.estimatedCost,
+      finalCost: repair.finalCost,
+      balanceDue: repair.balanceDue,
+      hasEstimate: true,
+      needsReview: false,
+      statusHistory: repair.statusHistory,
+    });
+  } catch (e) {
+    console.warn("Firestore sync convert repair error:", e);
+  }
+
+  return repair;
+}
+
+export async function markRepairReviewed(params: {
+  repairId: string;
+  callingUser: UserProfile;
+  note?: string;
+}): Promise<ShoeRepairOrder> {
+  const store = loadLocalStore();
+  const userId = ('uid' in params.callingUser ? params.callingUser.uid : (params.callingUser as any).id) || "user";
+
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can review repair claims");
+  }
+
+  const repair = store.repairs.find((r) => r.id === params.repairId);
+  if (!repair) throw new Error("Repair order not found");
+
+  repair.needsReview = false;
+  repair.reviewedBy = userId;
+  repair.reviewedAt = Date.now();
+  repair.reviewNote = params.note || null;
+  if (repair.warrantyStatus === "UNVERIFIED") {
+    repair.warrantyStatus = "VERIFIED";
+  }
+
+  logAuditAction(store, {
+    userId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "REPAIR_REVIEW",
+    entityType: "repairOrders",
+    entityId: repair.id,
+    shopId: repair.shopId,
+    after: { needsReview: false, reviewedBy: userId, note: params.note },
+    reason: `Reviewed repair claim ${repair.repairNumber}: ${params.note || "Approved"}`,
+  });
+
+  saveLocalStore(store);
   return repair;
 }
 

@@ -38,6 +38,9 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   priceFloorMode: "NONE",
   priceFloorValue: 0,
   priceOverrideReasonRequired: false,
+  costVarianceThresholdPercent: 25,
+  warrantyMonthsFootwear: 6,
+  warrantyMonthsBag: 12,
 };
 
 export const SEED_SHOPS: Shop[] = [

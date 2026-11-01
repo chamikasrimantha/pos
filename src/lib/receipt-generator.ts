@@ -402,19 +402,48 @@ export function renderDailyCashSummaryHTML(
   `;
 }
 
-// ── 3. SHOE REPAIR INTAKE CLAIM SLIP & SHOE ATTACHMENT TAG ─────────────────
+// ── 3. REPAIR INTAKE CLAIM SLIP & ATTACHMENT TAG (SHOES & BAGS) ───────────
 export function renderRepairIntakeSlipHTML(
   repair: ShoeRepairOrder,
   shop: Shop
 ): string {
-  const repairBarcode = generateBarcodeSVG(repair.repairNumber, {
+  // Use short code for tag barcode so it stays inside label bounds
+  const shortCode = repair.repairNumber.split("-").pop() || repair.repairNumber;
+  const tagBarcode = generateBarcodeSVG(shortCode, {
+    format: "CODE128",
+    height: 30,
+    width: 1.4,
+    displayValue: true,
+    fontSize: 10,
+    margin: 2,
+  });
+
+  const fullBarcode = generateBarcodeSVG(repair.repairNumber, {
     format: "CODE128",
     height: 36,
-    width: 2,
+    width: 1.8,
     displayValue: true,
     fontSize: 11,
     margin: 4,
   });
+
+  const isBag = repair.itemType === "BAG";
+  const itemTypeLabel = isBag ? "Bag" : "Footwear";
+  const subTypeLabel = repair.subType || (isBag ? "Bag" : "Shoe");
+  const brand = repair.brand || repair.shoeBrand || "Generic";
+  const model = repair.model || repair.shoeModel || "";
+  const size = repair.size || repair.shoeSize || "";
+  const color = repair.color || repair.shoeColor || "";
+  const dimension = repair.dimension;
+
+  const itemSpecs = [
+    color,
+    size ? (isBag ? `Size: ${size}` : `Size ${size}`) : "",
+    dimension ? `Dim: ${dimension}` : "",
+  ].filter(Boolean).join(", ");
+
+  const isWarranty = !!repair.isWarranty;
+  const hasEstimate = isWarranty ? false : repair.hasEstimate !== false;
 
   return `
     <div style="font-family: Arial, sans-serif; width: 300px; margin: 0 auto; padding: 10px; color: #000; line-height: 1.35; background: #fff;">
@@ -426,8 +455,8 @@ export function renderRepairIntakeSlipHTML(
           <div style="font-size: 11px;">Tel: ${shop.phone}</div>
         </div>
 
-        <div style="text-align: center; margin-bottom: 6px;">
-          ${repairBarcode}
+        <div style="text-align: center; margin-bottom: 6px; max-width: 100%; overflow: hidden;">
+          ${fullBarcode}
         </div>
 
         <div style="font-size: 12px; margin-bottom: 6px;">
@@ -438,11 +467,27 @@ export function renderRepairIntakeSlipHTML(
         </div>
 
         <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 6px 0; font-size: 12px; margin: 6px 0;">
-          <div><strong>Shoe:</strong> ${repair.shoeBrand} ${repair.shoeModel} (${repair.shoeColor}, Size ${repair.shoeSize})</div>
-          <div><strong>Origin:</strong> ${repair.isStorePurchased ? "Store Purchase" : "External Customer Shoe"}</div>
+          <div><strong>Item (${itemTypeLabel} - ${subTypeLabel}):</strong> ${brand} ${model} (${itemSpecs})</div>
+          <div><strong>Origin:</strong> ${repair.isStorePurchased ? "Store Purchase" : "External Item"}</div>
           <div style="margin-top: 4px;"><strong>Diagnosis / Task:</strong><br/><span style="color: #222;">${repair.issueDescription}</span></div>
         </div>
 
+        ${isWarranty ? `
+        <div style="background: #f0fdf4; border: 1px solid #16a34a; padding: 6px; border-radius: 4px; margin: 6px 0; text-align: center;">
+          <strong style="color: #15803d; font-size: 13px;">WARRANTY CLAIM — NO CHARGE</strong>
+          <div style="font-size: 11px; margin-top: 2px;">
+            Basis: ${repair.warrantyBasis === "STORE_INVOICE" ? `Store Invoice #${repair.warrantyInvoiceNumber || "N/A"}` : `Manual Card #${repair.warrantyCardNumber || "N/A"}`}
+            (${repair.warrantyStatus || "UNVERIFIED"})
+          </div>
+          ${repair.warrantyCoverageNote ? `<div style="font-size: 10px; color: #555; margin-top: 2px;">${repair.warrantyCoverageNote}</div>` : ""}
+        </div>
+        ` : !hasEstimate ? `
+        <div style="font-size: 12px; margin: 6px 0; text-align: center; background: #f3f4f6; padding: 8px; border-radius: 4px; border: 1px dashed #6b7280;">
+          <strong>Billing Estimate:</strong>
+          <div style="font-size: 13px; font-weight: bold; color: #374151; margin-top: 2px;">Estimate to be advised</div>
+          <div style="font-size: 10px; color: #6b7280;">Final cost will be confirmed upon completion / delivery</div>
+        </div>
+        ` : `
         <div style="font-size: 12px;">
           <div style="display: flex; justify-content: space-between;">
             <span>Estimated Fee:</span>
@@ -457,22 +502,26 @@ export function renderRepairIntakeSlipHTML(
             <span style="font-variant-numeric: tabular-nums;">${formatCurrency(repair.balanceDue)}</span>
           </div>
         </div>
+        `}
 
         <div style="font-size: 10px; color: #444; margin-top: 8px; border-top: 1px solid #000; padding-top: 4px; text-align: center;">
-          * Present this slip for shoe collection.<br/>
-          * Shoes not collected within 30 days are subject to disposal.
+          * Present this slip for item collection.<br/>
+          * Items not collected within 30 days are subject to disposal.
         </div>
       </div>
 
-      <!-- PART 2: PHYSICAL SHOE ATTACHMENT TAG -->
-      <div style="border: 2px dashed #000; padding: 8px; background: #fffbe8;">
-        <div style="text-align: center; font-size: 11px; font-weight: 900;">[ WORKSHOP SHOE ATTACHMENT TAG ]</div>
-        <div style="text-align: center; margin: 4px 0;">
-          ${repairBarcode}
+      <!-- PART 2: PHYSICAL WORKSHOP ATTACHMENT TAG -->
+      <div style="border: 2px dashed #000; padding: 8px; background: #fffbe8; max-width: 280px; box-sizing: border-box; overflow: hidden;">
+        <div style="text-align: center; font-size: 11px; font-weight: 900;">[ WORKSHOP ${isBag ? "BAG" : "SHOE"} ATTACHMENT TAG ]</div>
+        <div style="text-align: center; margin: 4px 0; max-width: 100%; overflow: hidden;">
+          ${tagBarcode}
         </div>
-        <div style="font-size: 11px;">
+        <div style="font-size: 11px; word-break: break-word;">
+          <div><strong>Ticket:</strong> ${repair.repairNumber}</div>
           <div><strong>Cust:</strong> ${repair.customerName} (${repair.customerPhone})</div>
-          <div><strong>Shoe:</strong> ${repair.shoeBrand} | Sz: ${repair.shoeSize} | ${repair.shoeColor}</div>
+          <div><strong>Item:</strong> ${subTypeLabel} | ${brand} | ${color}${size ? ` | Sz: ${size}` : ""}</div>
+          ${isWarranty ? `<div style="font-weight: 700; color: #15803d;">** WARRANTY CLAIM — NO CHARGE **</div>` : ""}
+          ${!isWarranty && !hasEstimate ? `<div><strong>Estimate:</strong> Estimate to be advised</div>` : ""}
           <div><strong>Promised:</strong> ${new Date(repair.promisedDate).toLocaleDateString("en-LK")}</div>
           <div style="margin-top: 2px; font-weight: 700;">Tasks: ${repair.issueDescription}</div>
         </div>
@@ -486,7 +535,23 @@ export function renderRepairDeliveryReceiptHTML(
   repair: ShoeRepairOrder,
   shop: Shop
 ): string {
-  const finalPay = Math.max(0, (repair.finalCost || repair.estimatedCost) - repair.advancePaid);
+  const isBag = repair.itemType === "BAG";
+  const itemTypeLabel = isBag ? "Bag" : "Footwear";
+  const subTypeLabel = repair.subType || (isBag ? "Bag" : "Shoe");
+  const brand = repair.brand || repair.shoeBrand || "Generic";
+  const model = repair.model || repair.shoeModel || "";
+  const size = repair.size || repair.shoeSize || "";
+  const color = repair.color || repair.shoeColor || "";
+  const dimension = repair.dimension;
+
+  const itemSpecs = [
+    color,
+    size ? (isBag ? `Size: ${size}` : `Size ${size}`) : "",
+    dimension ? `Dim: ${dimension}` : "",
+  ].filter(Boolean).join(", ");
+
+  const isWarranty = !!repair.isWarranty;
+  const finalPay = isWarranty ? 0 : Math.max(0, (repair.finalCost || repair.estimatedCost) - repair.advancePaid);
 
   return `
     <div style="font-family: 'Courier New', Courier, monospace; width: 280px; margin: 0 auto; padding: 12px 8px; color: #000; line-height: 1.35; background: #fff;">
@@ -503,10 +568,20 @@ export function renderRepairDeliveryReceiptHTML(
       </div>
 
       <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 6px 0; font-size: 12px;">
-        <div><strong>Shoe Article:</strong> ${repair.shoeBrand} ${repair.shoeModel} (${repair.shoeColor}, Size ${repair.shoeSize})</div>
+        <div><strong>${itemTypeLabel} Article:</strong> ${brand} ${model} (${itemSpecs})</div>
+        <div><strong>Type:</strong> ${subTypeLabel}</div>
         <div style="margin-top: 4px;"><strong>Service Rendered:</strong> ${repair.issueDescription}</div>
       </div>
 
+      ${isWarranty ? `
+      <div style="margin-top: 10px; padding: 8px; border: 1px dashed #000; text-align: center; font-size: 13px; font-weight: bold;">
+        <div>Warranty service — no charge</div>
+        <div style="font-size: 11px; font-weight: normal; margin-top: 2px;">
+          Basis: ${repair.warrantyBasis === "STORE_INVOICE" ? `Store Invoice #${repair.warrantyInvoiceNumber || ""}` : `Manual Card #${repair.warrantyCardNumber || ""}`}
+          (${repair.warrantyStatus || "VERIFIED"})
+        </div>
+      </div>
+      ` : `
       <div style="margin-top: 8px; font-size: 12px;">
         <div style="display: flex; justify-content: space-between;">
           <span>Total Service Charge:</span>
@@ -524,10 +599,12 @@ export function renderRepairDeliveryReceiptHTML(
           Payment Method: ${repair.deliveryPaymentMethod || "CASH"}
         </div>
       </div>
+      `}
 
       <div style="text-align: center; margin-top: 14px; font-size: 11px; border-top: 1px dashed #000; padding-top: 8px;">
         Goods collected in satisfactory condition.<br/>
-        Workshop stitching & sole bond warranty: 14 days.
+        Workshop stitching & sole bond warranty: 14 days<br/>
+        (Repair workmanship warranty).
       </div>
     </div>
   `;
