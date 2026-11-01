@@ -29,6 +29,9 @@ export interface UserProfile {
   allowedShopIds: string[]; // e.g. ["rightway"] or ["mega"] or ["rightway", "mega"] for SUPER_ADMIN
   active: boolean;
   mustChangePassword?: boolean;
+  linkedEmployeeId?: string;
+  hidden?: boolean; // For retired/removed managers who have historical references
+  password?: string;
   lastSignInAt?: number;
   discountCap?: number; // Maximum allowed % discount for this user
   cashRefundCap?: number; // Maximum allowed Rs. refund without approval

@@ -11,7 +11,8 @@ import {
   updateSystemSettings,
 } from "@/lib/firestore-service";
 import { formatDate } from "@/lib/receipt-generator";
-import { UserProfile, SystemSettings } from "@/types";
+import { formatColomboDateTime } from "@/lib/date-utils";
+import { UserProfile, SystemSettings, UserRole } from "@/types";
 import {
   Store,
   Users,
@@ -26,6 +27,8 @@ import {
   UserX,
   Save,
   Lock,
+  Pencil,
+  Shield,
 } from "lucide-react";
 
 export function AdminView() {
@@ -37,11 +40,22 @@ export function AdminView() {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
-  const [newRole, setNewRole] = useState<"SUPER_ADMIN" | "SHOP_MANAGER" | "CASHIER">("CASHIER");
+  const [newRole, setNewRole] = useState<UserRole>("CASHIER");
   const [newShopId, setNewShopId] = useState<string>("rightway");
+  const [newTemporaryPassword, setNewTemporaryPassword] = useState("ApexPass2026!");
+  const [newMustChangePassword, setNewMustChangePassword] = useState(true);
+  const [superAdminConfirmed, setSuperAdminConfirmed] = useState(false);
   const [newDiscountCap, setNewDiscountCap] = useState("0");
   const [newRefundCap, setNewRefundCap] = useState("3000");
   const [isSubmittingUser, setIsSubmittingUser] = useState(false);
+
+  // Edit User State
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editRole, setEditRole] = useState<UserRole>("CASHIER");
+  const [editShopId, setEditShopId] = useState("rightway");
+  const [editSuperAdminConfirmed, setEditSuperAdminConfirmed] = useState(false);
+  const [isSavingEditUser, setIsSavingEditUser] = useState(false);
 
   // Settings State
   const [formSettings, setFormSettings] = useState<SystemSettings>({ ...settings });
@@ -65,12 +79,20 @@ export function AdminView() {
     });
   }, [auditLogs, auditFilterUser, auditFilterAction]);
 
-  // Handle Create User
+  // Handle Create User via Server Route /api/admin/users
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
     if (!newEmail.trim() || !newDisplayName.trim()) {
       showToast("Please provide user full name and email.", "error");
+      return;
+    }
+    if (newTemporaryPassword.length < 10) {
+      showToast("Temporary password must be at least 10 characters.", "error");
+      return;
+    }
+    if (newRole === "SUPER_ADMIN" && !superAdminConfirmed) {
+      showToast("Please confirm granting Super Admin privileges.", "error");
       return;
     }
 
@@ -80,21 +102,49 @@ export function AdminView() {
     setIsSubmittingUser(true);
     try {
       const allowedShops = newRole === "SUPER_ADMIN" ? ["rightway", "mega"] : [newShopId];
-      const created = await createUserProfile({
-        email: newEmail.trim().toLowerCase(),
-        displayName: newDisplayName.trim(),
-        role: newRole,
-        allowedShopIds: allowedShops,
-        discountCap: discCap,
-        cashRefundCap: refCap,
-        createdBy: currentUser.uid,
-      });
+      let created;
+      try {
+        const res = await fetch("/api/admin/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: newEmail.trim().toLowerCase(),
+            displayName: newDisplayName.trim(),
+            role: newRole,
+            branchId: newShopId,
+            temporaryPassword: newTemporaryPassword,
+            mustChangePassword: newMustChangePassword,
+            createdBy: currentUser.uid,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Failed to create user on server");
+        }
+        created = data.user;
+      } catch {
+        // Fallback to internal storage service
+        created = await createUserProfile({
+          email: newEmail.trim().toLowerCase(),
+          displayName: newDisplayName.trim(),
+          role: newRole,
+          allowedShopIds: allowedShops,
+          discountCap: discCap,
+          cashRefundCap: refCap,
+          createdBy: currentUser.uid,
+          password: newTemporaryPassword,
+          mustChangePassword: newMustChangePassword,
+        });
+      }
 
       showToast(`Created user account for ${created.displayName}!`, "success");
       setIsAddUserModalOpen(false);
       setNewEmail("");
       setNewDisplayName("");
       setNewRole("CASHIER");
+      setNewTemporaryPassword("ApexPass2026!");
+      setNewMustChangePassword(true);
+      setSuperAdminConfirmed(false);
       refreshData();
     } catch (err: any) {
       showToast(err.message || "Failed to create user", "error");
@@ -103,12 +153,95 @@ export function AdminView() {
     }
   };
 
+  // Open Edit User Modal
+  const openEditUser = (user: UserProfile) => {
+    setEditingUser(user);
+    setEditDisplayName(user.displayName);
+    setEditRole(user.role);
+    setEditShopId(user.allowedShopIds[0] || "rightway");
+    setEditSuperAdminConfirmed(user.role === "SUPER_ADMIN");
+  };
+
+  // Handle Save Edit User
+  const handleSaveEditUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !editingUser) return;
+
+    if (editingUser.uid === currentUser.uid && editRole !== "SUPER_ADMIN") {
+      showToast("You cannot demote your own administrator account.", "error");
+      return;
+    }
+
+    if (editRole === "SUPER_ADMIN" && !editSuperAdminConfirmed) {
+      showToast("Please confirm granting Super Admin privileges.", "error");
+      return;
+    }
+
+    setIsSavingEditUser(true);
+    try {
+      const allowedShops = editRole === "SUPER_ADMIN" ? ["rightway", "mega"] : [editShopId];
+      try {
+        const res = await fetch("/api/admin/users", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uid: editingUser.uid,
+            updates: {
+              displayName: editDisplayName.trim(),
+              role: editRole,
+              allowedShopIds: allowedShops,
+            },
+            updatedBy: currentUser.uid,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Server update failed");
+      } catch {
+        await updateUserProfile(
+          editingUser.uid,
+          {
+            displayName: editDisplayName.trim(),
+            role: editRole,
+            allowedShopIds: allowedShops,
+          },
+          currentUser.uid
+        );
+      }
+
+      showToast(`Updated profile for ${editDisplayName.trim()}!`, "success");
+      setEditingUser(null);
+      refreshData();
+    } catch (err: any) {
+      showToast(err.message || "Failed to update user", "error");
+    } finally {
+      setIsSavingEditUser(false);
+    }
+  };
+
   // Handle Toggle User Active
   const handleToggleActive = async (targetUser: UserProfile) => {
     if (!currentUser) return;
+    if (targetUser.uid === currentUser.uid) {
+      showToast("You cannot disable your own administrator account.", "error");
+      return;
+    }
     try {
-      const updated = await toggleUserActive(targetUser.uid, !targetUser.active, currentUser.uid);
-      showToast(`User ${updated.displayName} marked as ${updated.active ? "active" : "disabled"}.`, "success");
+      try {
+        const res = await fetch("/api/admin/users", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uid: targetUser.uid,
+            updates: { active: !targetUser.active },
+            updatedBy: currentUser.uid,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Server update failed");
+      } catch {
+        await toggleUserActive(targetUser.uid, !targetUser.active, currentUser.uid);
+      }
+      showToast(`User ${targetUser.displayName} marked as ${!targetUser.active ? "active" : "disabled"}.`, "success");
       refreshData();
     } catch (err: any) {
       showToast(err.message || "Failed to update user status", "error");
@@ -118,9 +251,27 @@ export function AdminView() {
   // Handle Reset Password Flag
   const handleResetPassword = async (targetUser: UserProfile) => {
     if (!currentUser) return;
+    const tempPass = "ApexPass2026!";
     try {
-      await updateUserProfile(targetUser.uid, { mustChangePassword: true }, currentUser.uid);
-      showToast(`Password reset flagged for ${targetUser.displayName}. They must set a new password on next login.`, "success");
+      try {
+        const res = await fetch("/api/admin/users", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uid: targetUser.uid,
+            updates: {
+              mustChangePassword: true,
+              password: tempPass,
+            },
+            updatedBy: currentUser.uid,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to reset password");
+      } catch {
+        await updateUserProfile(targetUser.uid, { mustChangePassword: true, password: tempPass }, currentUser.uid);
+      }
+      showToast(`Password reset for ${targetUser.displayName}. Temporary password: ${tempPass} (Forced change at next sign-in).`, "success");
       refreshData();
     } catch (err: any) {
       showToast(err.message || "Failed to reset user password", "error");
@@ -321,9 +472,9 @@ export function AdminView() {
                   <th>Display Name</th>
                   <th>Email / Username</th>
                   <th>Role</th>
-                  <th>Assigned Outlets</th>
-                  <th>Caps (Disc / Refund)</th>
+                  <th>Branch</th>
                   <th>Status</th>
+                  <th>Last Sign-in</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -337,6 +488,17 @@ export function AdminView() {
                       : "Cashier";
 
                   const isSelf = u.uid === currentUser?.uid;
+                  const activeAdminsCount = users.filter((x) => x.role === "SUPER_ADMIN" && x.active).length;
+                  const cannotDisableOrDemote = isSelf || (u.role === "SUPER_ADMIN" && activeAdminsCount <= 1 && u.active);
+
+                  const branchLabel =
+                    u.role === "SUPER_ADMIN"
+                      ? "All Branches (Central)"
+                      : u.allowedShopIds.includes("rightway")
+                      ? "RightWay Shoes"
+                      : u.allowedShopIds.includes("mega")
+                      ? "Mega Shoes"
+                      : u.allowedShopIds.join(", ");
 
                   return (
                     <tr key={u.uid}>
@@ -355,17 +517,8 @@ export function AdminView() {
                           {roleLabel}
                         </span>
                       </td>
-                      <td>
-                        <div style={{ display: "flex", gap: "4px" }}>
-                          {u.allowedShopIds.map((sid) => (
-                            <span key={sid} className="badge badge-neutral">
-                              {sid === "rightway" ? "RightWay" : sid === "mega" ? "Mega" : sid}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td style={{ fontSize: "13px", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>
-                        Disc: {u.discountCap || 0}% &bull; Ref: Rs. {u.cashRefundCap || 0}
+                      <td style={{ fontSize: "13px", fontWeight: "500", color: "var(--ink)" }}>
+                        {branchLabel}
                       </td>
                       <td>
                         <span className={`badge ${u.active ? "badge-success" : "badge-danger"}`}>
@@ -377,11 +530,21 @@ export function AdminView() {
                           </span>
                         )}
                       </td>
+                      <td style={{ fontSize: "12px", color: "var(--ink-2)" }}>
+                        {u.lastSignInAt ? formatColomboDateTime(u.lastSignInAt) : "Never"}
+                      </td>
                       <td>
                         <div style={{ display: "flex", gap: "6px" }}>
                           <button
                             className="btn btn-secondary btn-sm"
-                            title="Force password reset on next sign-in"
+                            title="Edit user details and role"
+                            onClick={() => openEditUser(u)}
+                          >
+                            <Pencil size={13} /> Edit
+                          </button>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            title="Issue temporary password & force change on next sign-in"
                             onClick={() => handleResetPassword(u)}
                           >
                             <KeyRound size={13} /> Reset Pass
@@ -390,7 +553,14 @@ export function AdminView() {
                             <button
                               className={`btn btn-sm ${u.active ? "btn-danger" : "btn-primary"}`}
                               onClick={() => handleToggleActive(u)}
-                              title={u.active ? "Disable staff account" : "Enable staff account"}
+                              disabled={cannotDisableOrDemote}
+                              title={
+                                cannotDisableOrDemote
+                                  ? "Cannot disable the last active Super Admin"
+                                  : u.active
+                                  ? "Disable staff account"
+                                  : "Enable staff account"
+                              }
                             >
                               {u.active ? <UserX size={13} /> : <UserCheck size={13} />}
                               {u.active ? "Disable" : "Enable"}
@@ -814,6 +984,53 @@ export function AdminView() {
               </div>
             </div>
 
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ fontSize: "14px", fontWeight: "600", color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                Temporary Password (min 10 characters) *
+              </label>
+              <input
+                type="text"
+                required
+                minLength={10}
+                className="input-field"
+                value={newTemporaryPassword}
+                onChange={(e) => setNewTemporaryPassword(e.target.value)}
+              />
+            </div>
+
+            <div style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="checkbox"
+                id="new-must-change-pass"
+                checked={newMustChangePassword}
+                onChange={(e) => setNewMustChangePassword(e.target.checked)}
+                style={{ width: "16px", height: "16px", accentColor: "var(--primary)", cursor: "pointer" }}
+              />
+              <label htmlFor="new-must-change-pass" style={{ fontSize: "13px", fontWeight: "500", color: "var(--ink)", cursor: "pointer" }}>
+                Must change password at first sign-in
+              </label>
+            </div>
+
+            {newRole === "SUPER_ADMIN" && (
+              <div style={{ marginBottom: "16px", padding: "12px", background: "var(--warning-soft)", border: "1px solid #fed7aa", borderRadius: "8px" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px", color: "var(--warning)", fontWeight: "600", fontSize: "13px" }}>
+                  <ShieldAlert size={16} /> Super Admin Privilege Warning
+                </div>
+                <p style={{ fontSize: "12px", color: "var(--ink-2)", margin: "0 0 8px 0" }}>
+                  Super Admins have unrestricted access to central settings, supplier ledgers, employees, payroll, and all branches.
+                </p>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", fontWeight: "600", color: "var(--ink)", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={superAdminConfirmed}
+                    onChange={(e) => setSuperAdminConfirmed(e.target.checked)}
+                    style={{ accentColor: "var(--primary)" }}
+                  />
+                  <span>I confirm creating this user with Super Admin privileges</span>
+                </label>
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "24px" }}>
               <div>
                 <label style={{ fontSize: "14px", fontWeight: "600", color: "var(--ink)", display: "block", marginBottom: "6px" }}>
@@ -861,6 +1078,119 @@ export function AdminView() {
               >
                 <CheckCircle2 size={16} />
                 {isSubmittingUser ? "Creating…" : "Create User"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* EDIT STAFF USER MODAL */}
+      {editingUser && (
+        <div className="modal-backdrop">
+          <form
+            onSubmit={handleSaveEditUser}
+            className="modal-panel animate-fade-in"
+            style={{ maxWidth: "480px" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
+              <div>
+                <h3 style={{ fontSize: "20px", fontWeight: "600", color: "var(--ink)", margin: 0 }}>
+                  Edit Staff Account
+                </h3>
+                <div style={{ fontSize: "13px", color: "var(--ink-3)", marginTop: "2px" }}>
+                  {editingUser.email}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="btn btn-secondary btn-sm"
+                aria-label="Close"
+                style={{ width: "36px", height: "36px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ fontSize: "14px", fontWeight: "600", color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                Staff Full Name *
+              </label>
+              <input
+                type="text"
+                required
+                className="input-field"
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+              <div>
+                <label style={{ fontSize: "14px", fontWeight: "600", color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                  Role *
+                </label>
+                <select
+                  className="input-field"
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value as any)}
+                >
+                  <option value="CASHIER">Cashier</option>
+                  <option value="SHOP_MANAGER">Shop Manager</option>
+                  <option value="SUPER_ADMIN">Super Admin</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "14px", fontWeight: "600", color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                  Assigned Branch *
+                </label>
+                <select
+                  className="input-field"
+                  disabled={editRole === "SUPER_ADMIN"}
+                  value={editShopId}
+                  onChange={(e) => setEditShopId(e.target.value)}
+                >
+                  <option value="rightway">RightWay Shoes (Colombo)</option>
+                  <option value="mega">Mega Shoes (Kandy)</option>
+                </select>
+              </div>
+            </div>
+
+            {editRole === "SUPER_ADMIN" && editingUser.role !== "SUPER_ADMIN" && (
+              <div style={{ marginBottom: "16px", padding: "12px", background: "var(--warning-soft)", border: "1px solid #fed7aa", borderRadius: "8px" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px", color: "var(--warning)", fontWeight: "600", fontSize: "13px" }}>
+                  <ShieldAlert size={16} /> Super Admin Privilege Warning
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", fontWeight: "600", color: "var(--ink)", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={editSuperAdminConfirmed}
+                    onChange={(e) => setEditSuperAdminConfirmed(e.target.checked)}
+                    style={{ accentColor: "var(--primary)" }}
+                  />
+                  <span>I confirm promoting this user to Super Admin</span>
+                </label>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end", marginTop: "24px" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1, height: "48px" }}
+                onClick={() => setEditingUser(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ flex: 2, height: "48px" }}
+                disabled={isSavingEditUser}
+              >
+                <Save size={16} />
+                {isSavingEditUser ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </form>

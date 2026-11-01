@@ -12,6 +12,7 @@ import {
   renderSingleThermalBarcodeLabel,
 } from "@/lib/receipt-generator";
 import { ProductVariant } from "@/types";
+import { can } from "@/lib/permissions";
 import { Tag, Barcode, Printer, Search, X, CheckSquare, Square, Layers, Sparkles, Filter, Check } from "lucide-react";
 
 export function ProductsMasterView() {
@@ -30,6 +31,7 @@ export function ProductsMasterView() {
   const [batchFixedCopies, setBatchFixedCopies] = useState("2");
 
   const canSeeCost = currentUser?.role === "SUPER_ADMIN";
+  const canPrintLabels = can(currentUser, "products.print_labels");
 
   const products = useMemo(() => getProducts(), [dataVersion]);
   const variants = useMemo(() => getVariants(), [dataVersion]);
@@ -223,31 +225,33 @@ export function ProductsMasterView() {
             )}
           </div>
 
-          {/* Batch Print Button */}
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              if (selectedVariantIds.size === 0) {
-                // Select all currently filtered variants by default
-                setSelectedVariantIds(new Set(filteredVariants.map((v) => v.id)));
-              }
-              setIsBatchModalOpen(true);
-            }}
-            style={{
-              borderRadius: "12px",
-              height: "42px",
-              padding: "0 16px",
-              fontSize: "14px",
-              fontWeight: "700",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "7px",
-              boxShadow: "0 2px 8px rgba(32, 86, 200, 0.25)",
-            }}
-          >
-            <Printer size={16} />
-            <span>Batch Print Labels</span>
-          </button>
+          {/* Batch Print Button - Cashier and Manager only */}
+          {canPrintLabels && (
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                if (selectedVariantIds.size === 0) {
+                  // Select all currently filtered variants by default
+                  setSelectedVariantIds(new Set(filteredVariants.map((v) => v.id)));
+                }
+                setIsBatchModalOpen(true);
+              }}
+              style={{
+                borderRadius: "12px",
+                height: "42px",
+                padding: "0 16px",
+                fontSize: "14px",
+                fontWeight: "700",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "7px",
+                boxShadow: "0 2px 8px rgba(32, 86, 200, 0.25)",
+              }}
+            >
+              <Printer size={16} />
+              <span>Batch Print Labels</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -541,18 +545,20 @@ export function ProductsMasterView() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => toggleVariantSelection(v.id)}
-                    style={{
-                      marginTop: "3px",
-                      width: "18px",
-                      height: "18px",
-                      accentColor: "var(--primary)",
-                      cursor: "pointer",
-                    }}
-                  />
+                  {canPrintLabels && (
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleVariantSelection(v.id)}
+                      style={{
+                        marginTop: "3px",
+                        width: "18px",
+                        height: "18px",
+                        accentColor: "var(--primary)",
+                        cursor: "pointer",
+                      }}
+                    />
+                  )}
                   <div>
                     <span
                       style={{
@@ -604,23 +610,25 @@ export function ProductsMasterView() {
                   </span>
                 </div>
 
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setSelectedVariantForBarcode(v)}
-                  style={{
-                    height: "36px",
-                    padding: "0 14px",
-                    borderRadius: "10px",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <Printer size={14} style={{ color: "var(--primary)" }} />
-                  <span>Print Label</span>
-                </button>
+                {canPrintLabels && (
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setSelectedVariantForBarcode(v)}
+                    style={{
+                      height: "36px",
+                      padding: "0 14px",
+                      borderRadius: "10px",
+                      fontSize: "13px",
+                      fontWeight: "700",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <Printer size={14} style={{ color: "var(--primary)" }} />
+                    <span>Print Label</span>
+                  </button>
+                )}
               </div>
             </div>
           );

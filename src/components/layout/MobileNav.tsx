@@ -5,7 +5,6 @@ import React, { useState } from "react";
 import { useApp } from "@/context/AppContext";
 import {
   ShoppingBag,
-  Coins,
   RotateCcw,
   Wrench,
   Boxes,
@@ -18,9 +17,11 @@ import {
   Truck,
   Tag,
   ShieldCheck,
-  ClipboardList,
   Receipt,
   CalendarCheck,
+  Users2,
+  Briefcase,
+  Inbox,
 } from "lucide-react";
 
 export function MobileNav() {
@@ -31,12 +32,12 @@ export function MobileNav() {
 
   const role = currentUser.role;
 
-  // Primary bottom navigation items by role (Section 7.3)
+  // Primary bottom navigation items by role per Section 2.2
   const getPrimaryItems = () => {
     if (role === "CASHIER") {
       return [
         { id: "pos", label: "Sell", icon: ShoppingBag },
-        { id: "shifts", label: "Shift", icon: Coins },
+        { id: "invoices", label: "Invoices", icon: Receipt },
         { id: "returns", label: "Returns", icon: RotateCcw },
         { id: "repairs", label: "Repairs", icon: Wrench },
       ];
@@ -46,15 +47,15 @@ export function MobileNav() {
         { id: "pos", label: "Sell", icon: ShoppingBag },
         { id: "inventory", label: "Stock", icon: Boxes },
         { id: "transfers", label: "Transfers", icon: ArrowLeftRight },
-        { id: "reports", label: "Reports", icon: BarChart3 },
+        { id: "invoices", label: "Invoices", icon: Receipt },
       ];
     }
-    // SUPER_ADMIN
+    // SUPER_ADMIN (No POS, No Shifts)
     return [
       { id: "reports", label: "Overview", icon: BarChart3 },
-      { id: "pos", label: "Sell", icon: ShoppingBag },
       { id: "inventory", label: "Stock", icon: Boxes },
       { id: "suppliers", label: "Suppliers", icon: Building2 },
+      { id: "admin", label: "Admin", icon: ShieldCheck },
     ];
   };
 
@@ -64,16 +65,18 @@ export function MobileNav() {
   const getSecondaryItems = () => {
     if (role === "CASHIER") {
       return [
-        { id: "invoices", label: "My Invoices", icon: Receipt },
-        { id: "reports", label: "My Daily Sales", icon: BarChart3 },
+        { id: "customers", label: "Customers & Credit", icon: Users2 },
+        { id: "transfers", label: "Branch Transfers", icon: ArrowLeftRight },
+        { id: "inventory", label: "Stock Check", icon: Boxes },
+        { id: "products", label: "Product Catalog & Labels", icon: Tag },
+        { id: "purchases", label: "Purchasing Inward", icon: Truck },
       ];
     }
     if (role === "SHOP_MANAGER") {
       return [
-        { id: "invoices", label: "My Invoices", icon: Receipt },
-        { id: "shifts", label: "Cash Drawer & Shifts", icon: Coins },
+        { id: "customers", label: "Customers & Credit", icon: Users2 },
         { id: "returns", label: "Returns & Exchanges", icon: RotateCcw },
-        { id: "repairs", label: "Shoe Repair Desk", icon: Wrench },
+        { id: "repairs", label: "Repair Desk", icon: Wrench },
         { id: "products", label: "Product Catalog", icon: Tag },
         { id: "purchases", label: "Purchasing Inward", icon: Truck },
       ];
@@ -81,14 +84,15 @@ export function MobileNav() {
     // SUPER_ADMIN
     return [
       { id: "invoices", label: "All Invoices", icon: Receipt },
+      { id: "customers", label: "Customers & Credit", icon: Users2 },
+      { id: "reviewInbox", label: "Review Inbox", icon: Inbox },
+      { id: "employees", label: "Employees & Payroll", icon: Briefcase },
       { id: "dayEndStatus", label: "Day-end Status", icon: CalendarCheck },
-      { id: "shifts", label: "Cash Drawer & Shifts", icon: Coins },
       { id: "returns", label: "Returns & Exchanges", icon: RotateCcw },
-      { id: "repairs", label: "Shoe Repair Desk", icon: Wrench },
+      { id: "repairs", label: "Repair Desk", icon: Wrench },
       { id: "transfers", label: "Branch Transfers", icon: ArrowLeftRight },
-      { id: "products", label: "Product Catalog & Labels", icon: Tag },
-      { id: "purchases", label: "Purchasing Inward", icon: Truck },
-      { id: "admin", label: "Admin & Settings", icon: ShieldCheck },
+      { id: "products", label: "Product Catalog", icon: Tag },
+      { id: "purchases", label: "Purchasing & Inward", icon: Truck },
     ];
   };
 

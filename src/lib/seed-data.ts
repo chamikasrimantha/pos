@@ -75,17 +75,6 @@ export const SEED_USERS: UserProfile[] = [
     active: true,
   },
   {
-    uid: "manager_rightway",
-    email: "manager.rw@shoes.pos",
-    displayName: "Kasun Perera (RightWay Manager)",
-    role: "SHOP_MANAGER",
-    allowedShopIds: ["rightway"],
-    active: true,
-    discountCap: 15,
-    cashRefundCap: 10000,
-    canCreatePurchase: true,
-  },
-  {
     uid: "cashier_rightway",
     email: "cashier.rw@shoes.pos",
     displayName: "Nadeeka Silva (RightWay Cashier)",
@@ -96,17 +85,6 @@ export const SEED_USERS: UserProfile[] = [
     cashRefundCap: 3000,
   },
   {
-    uid: "manager_mega",
-    email: "manager.mg@shoes.pos",
-    displayName: "Nuwan Wickramasinghe (Mega Manager)",
-    role: "SHOP_MANAGER",
-    allowedShopIds: ["mega"],
-    active: true,
-    discountCap: 15,
-    cashRefundCap: 10000,
-    canCreatePurchase: true,
-  },
-  {
     uid: "cashier_mega",
     email: "cashier.mg@shoes.pos",
     displayName: "Dinesh Ranatunga (Mega Cashier)",
@@ -115,6 +93,25 @@ export const SEED_USERS: UserProfile[] = [
     active: true,
     discountCap: 0,
     cashRefundCap: 3000,
+  },
+  // Archived Managers with historical transaction references (hidden from lists & sign-in)
+  {
+    uid: "manager_rightway",
+    email: "manager.rw@shoes.pos",
+    displayName: "Kasun Perera (RightWay Manager)",
+    role: "SHOP_MANAGER",
+    allowedShopIds: ["rightway"],
+    active: false,
+    hidden: true,
+  },
+  {
+    uid: "manager_mega",
+    email: "manager.mg@shoes.pos",
+    displayName: "Nuwan Wickramasinghe (Mega Manager)",
+    role: "SHOP_MANAGER",
+    allowedShopIds: ["mega"],
+    active: false,
+    hidden: true,
   },
 ];
 

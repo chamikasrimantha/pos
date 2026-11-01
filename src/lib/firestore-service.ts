@@ -148,12 +148,55 @@ function getInitialStore(): LocalStoreState {
   };
 }
 
+function cleanManagerUsers(store: LocalStoreState): boolean {
+  let changed = false;
+  const isReferenced = (uid: string) => {
+    return (
+      store.sales.some((s) => s.cashierId === uid || s.cancelledBy === uid) ||
+      store.saleItems.some((si) => si.cashierId === uid) ||
+      store.returns.some((r) => r.cashierId === uid || r.approvedBy === uid) ||
+      store.repairs.some((rp) => rp.intakeCashierId === uid || rp.deliveryCashierId === uid) ||
+      store.transfers.some((t) => t.dispatchedBy === uid || t.receivedBy === uid) ||
+      store.purchases.some((p) => p.receivedBy === uid) ||
+      store.auditLogs.some((a) => a.userId === uid)
+    );
+  };
+
+  const newUsers: UserProfile[] = [];
+  for (const u of store.users) {
+    if (u.role === "SHOP_MANAGER") {
+      if (isReferenced(u.uid)) {
+        if (u.active !== false || u.hidden !== true) {
+          u.active = false;
+          u.hidden = true;
+          changed = true;
+        }
+        newUsers.push(u);
+      } else {
+        // Delete unreferenced manager user
+        changed = true;
+      }
+    } else {
+      newUsers.push(u);
+    }
+  }
+  if (changed) {
+    store.users = newUsers;
+  }
+  return changed;
+}
+
 function loadLocalStore(): LocalStoreState {
-  if (typeof window === "undefined") return getInitialStore();
+  if (typeof window === "undefined") {
+    const init = getInitialStore();
+    cleanManagerUsers(init);
+    return init;
+  }
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (!raw) {
       const initial = getInitialStore();
+      cleanManagerUsers(initial);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(initial));
       return initial;
     }
@@ -165,6 +208,9 @@ function loadLocalStore(): LocalStoreState {
     if (!parsed.sales || parsed.sales.length === 0) {
       parsed.sales = [...SEED_SALES];
       parsed.saleItems = [...SEED_SALE_ITEMS];
+    }
+    if (cleanManagerUsers(parsed)) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
     }
     return parsed;
   } catch (err) {
@@ -231,8 +277,8 @@ export function getShops(): Shop[] {
   return loadLocalStore().shops;
 }
 
-export function getUsers(): UserProfile[] {
-  return loadLocalStore().users;
+export function getUsers(includeHidden = false): UserProfile[] {
+  return loadLocalStore().users.filter((u) => includeHidden || !u.hidden);
 }
 
 export function getCategories(): Category[] {
@@ -529,6 +575,12 @@ export async function completeSale(params: {
   idempotencyKey?: string;
 }): Promise<{ sale: Sale; items: SaleItem[] }> {
   const store = loadLocalStore();
+
+  // 0. Data-layer guard: Super Admin cannot make sales
+  const cashier = store.users.find((u) => u.uid === params.cashierId);
+  if (cashier?.role === "SUPER_ADMIN") {
+    throw new Error("The administrator account cannot make sales");
+  }
 
   // 1. Idempotency Check
   if (params.idempotencyKey) {
@@ -2035,6 +2087,9 @@ export async function createUserProfile(params: {
   discountCap?: number;
   cashRefundCap?: number;
   createdBy: string;
+  password?: string;
+  mustChangePassword?: boolean;
+  linkedEmployeeId?: string;
 }): Promise<UserProfile> {
   const store = loadLocalStore();
   const existing = store.users.find((u) => u.email.toLowerCase() === params.email.toLowerCase());
@@ -2049,7 +2104,9 @@ export async function createUserProfile(params: {
     role: params.role,
     allowedShopIds: params.allowedShopIds,
     active: true,
-    mustChangePassword: true,
+    mustChangePassword: params.mustChangePassword ?? true,
+    password: params.password,
+    linkedEmployeeId: params.linkedEmployeeId,
     discountCap: params.discountCap || (params.role === "CASHIER" ? 0 : 15),
     cashRefundCap: params.cashRefundCap || (params.role === "CASHIER" ? 3000 : 10000),
     canCreatePurchase: params.role === "SUPER_ADMIN",
@@ -2079,6 +2136,17 @@ export async function updateUserProfile(
   const user = store.users.find((u) => u.uid === uid);
   if (!user) throw new Error("User not found");
 
+  // Safety Guards: Cannot demote self or the last active Super Admin
+  if (updates.role && updates.role !== user.role && user.role === "SUPER_ADMIN") {
+    if (uid === updatedBy) {
+      throw new Error("You cannot demote your own administrator account.");
+    }
+    const activeAdmins = store.users.filter((u) => u.role === "SUPER_ADMIN" && u.active);
+    if (activeAdmins.length <= 1) {
+      throw new Error(ERROR_MESSAGES.LAST_ADMIN);
+    }
+  }
+
   const prev = { ...user };
   Object.assign(user, updates);
 
@@ -2106,7 +2174,12 @@ export async function toggleUserActive(
   const user = store.users.find((u) => u.uid === uid);
   if (!user) throw new Error("User not found");
 
-  // Guard: Cannot disable last Super Admin (Rule T-14)
+  // Safety Guard: Cannot disable oneself
+  if (!active && uid === updatedBy) {
+    throw new Error("You cannot disable your own administrator account.");
+  }
+
+  // Safety Guard: Cannot disable last Super Admin (Rule T-14 & CR02)
   if (!active && user.role === "SUPER_ADMIN") {
     const activeAdmins = store.users.filter((u) => u.role === "SUPER_ADMIN" && u.active);
     if (activeAdmins.length <= 1) {

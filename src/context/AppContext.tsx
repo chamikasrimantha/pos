@@ -289,6 +289,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       showToast("Branch is locked to your assigned outlet.", "error");
       return;
     }
+    if (id === "all") {
+      setActiveShop({
+        id: "all",
+        slug: "rightway",
+        code: "ALL",
+        name: "All Branches",
+        address: "Central Headquarters (All Outlets)",
+        phone: "-",
+        invoicePrefix: "APX-INV",
+        shiftPrefix: "APX-SFT",
+        repairPrefix: "APX-REP",
+        active: true,
+      });
+      return;
+    }
     const found = shops.find((s) => s.id === id);
     if (found) {
       setActiveShop(found);

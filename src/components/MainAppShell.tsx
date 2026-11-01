@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { ShieldCheck } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -10,6 +11,7 @@ import { Toaster } from "@/components/layout/Toaster";
 import { PrintModal } from "@/components/modals/PrintModal";
 import { OutletPicker } from "@/components/auth/OutletPicker";
 import { SignInView } from "@/components/auth/SignInView";
+import { ForcePasswordChangeModal } from "@/components/auth/ForcePasswordChangeModal";
 
 // Operational View Components
 import { PosView } from "@/components/pos/PosView";
@@ -32,6 +34,7 @@ export function MainAppShell() {
     selectedOutletSlug,
     setSelectedOutletSlug,
     activeView,
+    currentUser,
   } = useApp();
 
   const [mounted, setMounted] = useState(false);
@@ -119,7 +122,46 @@ export function MainAppShell() {
             width: "100%",
           }}
         >
-          {activeView === "pos" && <PosView />}
+          {activeView === "pos" && (
+            currentUser?.role === "SUPER_ADMIN" ? (
+              <div
+                style={{
+                  padding: "48px 24px",
+                  maxWidth: "560px",
+                  margin: "60px auto",
+                  textAlign: "center",
+                  background: "var(--surface)",
+                  borderRadius: "16px",
+                  border: "1px solid var(--line)",
+                  boxShadow: "var(--shadow-tile)",
+                }}
+              >
+                <div
+                  style={{
+                    width: "48px",
+                    height: "48px",
+                    borderRadius: "12px",
+                    background: "var(--warning-soft)",
+                    color: "var(--warning)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <ShieldCheck size={24} />
+                </div>
+                <h3 style={{ fontSize: "18px", fontWeight: "700", color: "var(--ink)", marginBottom: "8px" }}>
+                  POS Billing Counter Restricted
+                </h3>
+                <p style={{ fontSize: "14px", color: "var(--ink-2)", lineHeight: "1.5", margin: 0 }}>
+                  The administrator account cannot make sales or access the POS counter. Sign in as a Cashier to operate the counter.
+                </p>
+              </div>
+            ) : (
+              <PosView />
+            )
+          )}
           {activeView === "invoices" && <InvoicesView />}
           {activeView === "shifts" && <ShiftManager />}
           {activeView === "returns" && <ReturnsDesk />}
@@ -140,6 +182,7 @@ export function MainAppShell() {
 
       {/* Global Interactive Modals & Alerts */}
       <PrintModal />
+      <ForcePasswordChangeModal />
       <Toaster />
     </div>
   );

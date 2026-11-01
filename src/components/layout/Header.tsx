@@ -49,8 +49,9 @@ export function Header() {
               value={activeShop.id}
               onChange={(e) => {
                 setActiveShopId(e.target.value);
+                const selectedName = e.target.value === "all" ? "All branches" : shops.find((s) => s.id === e.target.value)?.name;
                 showToast(
-                  `Switched workspace to ${shops.find((s) => s.id === e.target.value)?.name}`,
+                  `Switched workspace to ${selectedName}`,
                   "info"
                 );
               }}
@@ -67,6 +68,9 @@ export function Header() {
                 fontFamily: "inherit",
               }}
             >
+              <option value="all" style={{ background: "#fff", color: "var(--ink)" }}>
+                All branches (Central)
+              </option>
               {shops.map((shop) => (
                 <option key={shop.id} value={shop.id} style={{ background: "#fff", color: "var(--ink)" }}>
                   {shop.name} ({shop.code})

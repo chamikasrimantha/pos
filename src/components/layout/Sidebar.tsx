@@ -19,6 +19,9 @@ import {
   LogOut,
   Receipt,
   CalendarCheck,
+  Users2,
+  Briefcase,
+  Inbox,
 } from "lucide-react";
 
 interface NavItem {
@@ -31,18 +34,20 @@ export function Sidebar() {
   const { activeView, setActiveView, currentUser, isModuleVisible, logout } = useApp();
 
   const allNavItems: NavItem[] = [
-    { id: "pos",          label: "POS Counter",          icon: ShoppingBag },
-    { id: "shifts",       label: "Cash Drawer & Shifts",  icon: Coins },
+    { id: "pos",          label: "POS Billing Counter",  icon: ShoppingBag },
     { id: "invoices",     label: "Invoices & Receipts",   icon: Receipt },
+    { id: "customers",    label: "Customers & Credit",    icon: Users2 },
     { id: "returns",      label: "Returns & Exchanges",   icon: RotateCcw },
-    { id: "repairs",      label: "Shoe Repair Desk",      icon: Wrench },
+    { id: "repairs",      label: "Repair Desk",           icon: Wrench },
     { id: "transfers",    label: "Branch Transfers",      icon: ArrowLeftRight },
-    { id: "inventory",    label: "Stock & Inventory",     icon: Boxes },
+    { id: "inventory",    label: "Stock & Movements",     icon: Boxes },
     { id: "products",     label: "Product Catalog",       icon: Tag },
-    { id: "purchases",    label: "Purchasing Inward",     icon: Truck },
+    { id: "purchases",    label: "Purchasing & Inward",   icon: Truck },
     { id: "suppliers",    label: "Suppliers & Cheques",   icon: Building2 },
+    { id: "employees",    label: "Employees & Payroll",   icon: Briefcase },
     { id: "reports",      label: "Reports & Analytics",   icon: BarChart3 },
     { id: "dayEndStatus", label: "Day-end Status",        icon: CalendarCheck },
+    { id: "reviewInbox",  label: "Review Inbox",          icon: Inbox },
     { id: "admin",        label: "Admin & Settings",      icon: ShieldCheck },
   ];
 
