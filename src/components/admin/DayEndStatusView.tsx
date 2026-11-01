@@ -345,6 +345,56 @@ export function DayEndStatusView() {
             </div>
           </div>
 
+          {/* Invoice Payment Status Counts & Credit Totals (Change Request 02 - Section 10.2) */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+              gap: "14px",
+              marginBottom: "24px",
+            }}
+          >
+            <div className="card" style={{ padding: "16px", border: "1px solid var(--success-line, #bbf7d0)", background: "var(--success-soft, #f0fdf4)" }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--success-ink, #166534)" }}>FULLY PAID INVOICES</div>
+              <div style={{ fontSize: "24px", fontWeight: "900", color: "var(--success)", marginTop: "4px" }}>
+                {statusData.paidInvoicesCount ?? statusData.completedInvoices}
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--success-ink, #166534)", marginTop: "2px" }}>
+                100% settled at counter
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: "16px", border: "1px solid var(--warning-line, #fde68a)", background: "var(--warning-soft, #fffbeb)" }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--warning-ink, #92400e)" }}>PARTIALLY PAID INVOICES</div>
+              <div style={{ fontSize: "24px", fontWeight: "900", color: "var(--warning-ink, #b45309)", marginTop: "4px" }}>
+                {statusData.partiallyPaidInvoicesCount || 0}
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--warning-ink, #92400e)", marginTop: "2px" }}>
+                Partial payment received
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: "16px", border: "1px solid var(--danger-line, #fecaca)", background: "var(--danger-soft, #fef2f2)" }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--danger)" }}>CREDIT SALES INVOICES</div>
+              <div style={{ fontSize: "24px", fontWeight: "900", color: "var(--danger)", marginTop: "4px" }}>
+                {statusData.creditInvoicesCount || 0}
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--danger)", marginTop: "2px" }}>
+                Billed entirely on credit
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: "16px", border: "1px solid var(--line)", background: "var(--surface)" }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--ink-3)" }}>CREDIT BALANCE DUE</div>
+              <div style={{ fontSize: "24px", fontWeight: "900", color: "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+                {formatCurrency(statusData.totalCreditBalanceDue || 0)}
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--ink-4)", marginTop: "2px" }}>
+                Total credit: {formatCurrency(statusData.totalCreditSalesAmount || 0)}
+              </div>
+            </div>
+          </div>
+
           {/* Daily Cash Movement Card & Cashier Breakdown */}
           <div
             className="card"

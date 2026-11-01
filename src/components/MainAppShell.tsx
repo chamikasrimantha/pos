@@ -28,6 +28,7 @@ import { AdminView } from "@/components/admin/AdminView";
 import { InvoicesView } from "@/components/invoices/InvoicesView";
 import { CustomersView } from "@/components/customers/CustomersView";
 import { EmployeesView } from "@/components/employees/EmployeesView";
+import { ReviewInboxView } from "@/components/admin/ReviewInboxView";
 import { DayEndStatusView } from "@/components/admin/DayEndStatusView";
 
 export function MainAppShell() {
@@ -175,6 +176,7 @@ export function MainAppShell() {
           {activeView === "purchases" && <PurchasesView />}
           {activeView === "suppliers" && <SuppliersView />}
           {activeView === "employees" && <EmployeesView />}
+          {activeView === "reviewInbox" && <ReviewInboxView />}
           {activeView === "reports" && <ReportsView />}
           {activeView === "dayEndStatus" && <DayEndStatusView />}
           {activeView === "admin" && <AdminView />}

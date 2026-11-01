@@ -66,6 +66,9 @@ import {
   PayrollMonth,
   PayrollMonthStatus,
   PayrollDeduction,
+  ReviewInboxCounts,
+  PriceOverrideItem,
+  PurchaseCashItem,
 } from "@/types";
 import {
   SEED_SHOPS,
@@ -564,6 +567,7 @@ export async function createQuickProduct(
     active: true,
     reviewStatus: "NEEDS_REVIEW",
     reviewReason: "Quick added at counter",
+    needsReview: true,
     createdAt: now,
     updatedAt: now,
     createdBy: input.createdBy,
@@ -882,6 +886,8 @@ export async function addSupplier(params: {
   return supplier;
 }
 
+export const createSupplier = addSupplier;
+
 export function getInventoryForShop(shopId: string): Inventory[] {
   const store = loadLocalStore();
   return Object.values(store.inventory).filter((i) => i.shopId === shopId);
@@ -1162,6 +1168,7 @@ export async function completeSale(params: {
     returnedAmount: 0,
     status: "COMPLETED",
     idempotencyKey: params.idempotencyKey,
+    needsReview: paymentStatus === "CREDIT" || paymentStatus === "PARTIALLY_PAID",
     createdAt: Date.now(),
     saleDate: Date.now(),
   };
@@ -1194,6 +1201,7 @@ export async function completeSale(params: {
       listPrice,
       priceOverridden: isOverridden,
       priceOverrideReason: item.priceOverrideReason,
+      needsReview: isOverridden ? true : false,
       discount: item.discount,
       lineTotal: item.lineTotal,
       variantDescriptionCache: `${item.variant.productNameCache} - ${item.variant.colorNameCache} - ${item.variant.sizeLabelCache}`,
@@ -2957,6 +2965,7 @@ export async function quickTransferStock(params: QuickTransferParams): Promise<S
     receivedAt: now,
     notes: params.notes || null,
     idempotencyKey: params.idempotencyKey || null,
+    needsReview: true,
   };
 
   store.transfers.push(transfer);
@@ -4288,6 +4297,9 @@ export interface DailySalesData {
   };
   repairIncome: number;
   dailyCashSummary?: DailyCashSummary;
+  priceOverrides?: PriceOverrideItem[];
+  purchasesPaidInCash?: PurchaseCashItem[];
+  totalPurchasesCash?: number;
   shifts?: {
     id: string;
     cashierName: string;
@@ -4325,6 +4337,12 @@ export interface DayEndStatusData {
   partiallyReturnedInvoices: number;
   fullyReturnedInvoices: number;
   cancelledInvoices: number;
+  paidInvoicesCount: number;
+  partiallyPaidInvoicesCount: number;
+  creditInvoicesCount: number;
+  totalCreditSalesAmount: number;
+  totalCreditCollectedNow: number;
+  totalCreditBalanceDue: number;
   grossSales: number;
   refunds: number;
   netSales: number;
@@ -4429,6 +4447,57 @@ export function getDailySalesData(
     }
   });
 
+  // Price overrides for the day
+  const priceOverrides: PriceOverrideItem[] = [];
+  daySales.forEach((sale) => {
+    const items = itemsBySaleId[sale.id] || [];
+    items.forEach((it) => {
+      const listP = it.listPrice !== undefined ? it.listPrice : it.unitSellingPrice;
+      const isOverridden = it.priceOverridden === true || (it.listPrice !== undefined && it.listPrice > it.unitSellingPrice);
+      if (isOverridden) {
+        const reduction = Math.max(0, listP - it.unitSellingPrice);
+        const reductionPercent = listP > 0 ? (reduction / listP) * 100 : 0;
+        priceOverrides.push({
+          saleId: sale.id,
+          invoiceNumber: sale.invoiceNumber,
+          productName: it.variantDescriptionCache || "Product",
+          variantSku: it.variantId,
+          listPrice: listP,
+          priceCharged: it.unitSellingPrice,
+          reduction,
+          reductionPercent,
+          cashierName: sale.cashierNameCache || "Cashier",
+          reason: it.priceOverrideReason || "",
+          time: sale.createdAt,
+        });
+      }
+    });
+  });
+
+  // Purchases paid in cash today
+  const purchasesPaidInCash: PurchaseCashItem[] = [];
+  let totalPurchasesCash = 0;
+  (store.purchases || []).forEach((p) => {
+    const pDate = p.invoiceDate || p.receivedAt;
+    if (pDate >= startOfDay && pDate <= endOfDay) {
+      if (shopId === "ALL" || !shopId || p.shopId === shopId) {
+        if (p.paymentMethod === "CASH" || (p.paidAmount && p.paidAmount > 0 && p.paymentMethod !== "CHEQUE" && p.paymentMethod !== "CREDIT")) {
+          const cashAmt = p.paymentMethod === "CASH" ? p.totalAmount : (p.paidAmount || 0);
+          totalPurchasesCash += cashAmt;
+          purchasesPaidInCash.push({
+            id: p.id,
+            purchaseNumber: p.purchaseNumber,
+            supplierName: p.supplierNameCache,
+            amount: p.totalAmount,
+            paidAmount: cashAmt,
+            receivedBy: p.createdByNameCache || p.receivedBy,
+            time: pDate,
+          });
+        }
+      }
+    }
+  });
+
   const parts = getColomboDateParts(dayTimestamp);
   const dateDisplay = `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
 
@@ -4445,6 +4514,9 @@ export function getDailySalesData(
     payments,
     repairIncome,
     dailyCashSummary,
+    priceOverrides,
+    purchasesPaidInCash,
+    totalPurchasesCash,
     shifts: [],
     sales: daySales,
     itemsBySaleId,
@@ -4536,6 +4608,12 @@ export function getDayEndStatusData(
   let partiallyReturnedInvoices = 0;
   let fullyReturnedInvoices = 0;
   let cancelledInvoices = 0;
+  let paidInvoicesCount = 0;
+  let partiallyPaidInvoicesCount = 0;
+  let creditInvoicesCount = 0;
+  let totalCreditSalesAmount = 0;
+  let totalCreditCollectedNow = 0;
+  let totalCreditBalanceDue = 0;
   let grossSales = 0;
   let refunds = 0;
   let netSales = 0;
@@ -4546,6 +4624,22 @@ export function getDayEndStatusData(
       if (sale.returnStatus === "PARTIALLY_RETURNED") partiallyReturnedInvoices++;
       else if (sale.returnStatus === "FULLY_RETURNED") fullyReturnedInvoices++;
       else completedInvoices++;
+
+      if (sale.paymentStatus === "PAID") {
+        paidInvoicesCount++;
+      } else if (sale.paymentStatus === "PARTIALLY_PAID") {
+        partiallyPaidInvoicesCount++;
+        totalCreditSalesAmount += sale.total || 0;
+        totalCreditCollectedNow += sale.amountPaid || 0;
+        totalCreditBalanceDue += sale.balanceDue || 0;
+      } else if (sale.paymentStatus === "CREDIT") {
+        creditInvoicesCount++;
+        totalCreditSalesAmount += sale.total || 0;
+        totalCreditCollectedNow += sale.amountPaid || 0;
+        totalCreditBalanceDue += sale.balanceDue || 0;
+      } else {
+        paidInvoicesCount++;
+      }
     } else if (sale.status === "CANCELLED") {
       cancelledInvoices++;
     }
@@ -4632,6 +4726,12 @@ export function getDayEndStatusData(
     partiallyReturnedInvoices,
     fullyReturnedInvoices,
     cancelledInvoices,
+    paidInvoicesCount,
+    partiallyPaidInvoicesCount,
+    creditInvoicesCount,
+    totalCreditSalesAmount,
+    totalCreditCollectedNow,
+    totalCreditBalanceDue,
     grossSales,
     refunds,
     netSales,
@@ -5473,3 +5573,401 @@ export function getLeaveRecords(
     .filter((l) => !employeeId || l.employeeId === employeeId)
     .sort((a, b) => b.createdAt - a.createdAt);
 }
+
+// ==========================================
+// 19. REVIEW INBOX (SUPER ADMIN ONLY)
+// ==========================================
+
+export function getReviewInboxCounts(callingUser: UserProfile): ReviewInboxCounts {
+  if (!callingUser || callingUser.role !== "SUPER_ADMIN") {
+    throw new Error(ERROR_MESSAGES.PERMISSION_DENIED);
+  }
+  const store = loadLocalStore();
+
+  const products = (store.products || []).filter(
+    (p) => (p.needsReview === true || p.reviewStatus === "NEEDS_REVIEW") && p.needsReview !== false && p.reviewStatus !== "APPROVED"
+  ).length;
+
+  const suppliers = (store.suppliers || []).filter(
+    (s) => s.needsReview === true
+  ).length;
+
+  const purchases = (store.purchases || []).filter(
+    (p) => p.needsReview === true
+  ).length;
+
+  const cheques = (store.cheques || []).filter(
+    (c) => c.needsReview === true
+  ).length;
+
+  const priceOverrides = (store.saleItems || []).filter(
+    (item) => item.priceOverridden === true && item.needsReview !== false
+  ).length;
+
+  const transfers = (store.transfers || []).filter(
+    (t) => t.mode === "QUICK" && t.needsReview !== false && !t.reviewedAt
+  ).length;
+
+  const warranties = (store.repairs || []).filter(
+    (r) => r.isWarranty && r.warrantyStatus === "UNVERIFIED" && r.needsReview !== false && !r.reviewedAt
+  ).length;
+
+  const creditSales = (store.sales || []).filter(
+    (s) => (s.paymentStatus === "CREDIT" || s.paymentStatus === "PARTIALLY_PAID") && s.needsReview !== false && !s.reviewedAt
+  ).length;
+
+  return {
+    products,
+    suppliers,
+    purchases,
+    cheques,
+    priceOverrides,
+    transfers,
+    warranties,
+    creditSales,
+    total: products + suppliers + purchases + cheques + priceOverrides + transfers + warranties + creditSales,
+  };
+}
+
+export function getReviewInboxItems(
+  callingUser: UserProfile,
+  category: "products" | "suppliers" | "purchases" | "cheques" | "priceOverrides" | "transfers" | "warranties" | "creditSales",
+  filterOptions?: { minDiscountPercent?: number }
+) {
+  if (!callingUser || callingUser.role !== "SUPER_ADMIN") {
+    throw new Error(ERROR_MESSAGES.PERMISSION_DENIED);
+  }
+  const store = loadLocalStore();
+
+  if (category === "products") {
+    const list = (store.products || []).filter(
+      (p) => (p.needsReview === true || p.reviewStatus === "NEEDS_REVIEW") && p.needsReview !== false && p.reviewStatus !== "APPROVED"
+    );
+    return list.map((p) => {
+      const brand = (store.brands || []).find((b) => b.id === p.brandId);
+      const cat = (store.categories || []).find((c) => c.id === p.categoryId);
+      const user = (store.users || []).find((u) => u.uid === p.createdBy);
+      return {
+        id: p.id,
+        name: p.name,
+        productType: p.productType || "FOOTWEAR",
+        brandName: brand?.name || "Generic",
+        categoryName: cat?.name || "General",
+        createdBy: user?.displayName || p.createdBy,
+        createdByRole: user?.role || "CASHIER",
+        createdAt: p.createdAt,
+        reviewReason: p.reviewReason || "New product created",
+      };
+    });
+  }
+
+  if (category === "suppliers") {
+    const list = (store.suppliers || []).filter((s) => s.needsReview === true);
+    return list.map((s) => ({
+      id: s.id,
+      name: s.name,
+      contactPerson: s.contactPerson || "N/A",
+      phone: s.phone,
+      email: s.email || "N/A",
+      createdAt: s.createdAt,
+    }));
+  }
+
+  if (category === "purchases") {
+    const list = (store.purchases || []).filter((p) => p.needsReview === true);
+    return list.map((p) => {
+      const shop = (store.shops || []).find((s) => s.id === p.shopId);
+      return {
+        id: p.id,
+        purchaseNumber: p.purchaseNumber,
+        supplierName: p.supplierNameCache,
+        totalAmount: p.totalAmount,
+        paymentMethod: p.paymentMethod || "CASH",
+        paidAmount: p.paidAmount,
+        costVarianceFlagged: p.costVarianceFlagged,
+        receivedBy: p.createdByNameCache || p.receivedBy,
+        branchName: shop?.name || p.shopId,
+        receivedAt: p.receivedAt || p.invoiceDate,
+      };
+    });
+  }
+
+  if (category === "cheques") {
+    const list = (store.cheques || []).filter((c) => c.needsReview === true);
+    return list.map((c) => {
+      const shop = (store.shops || []).find((s) => s.id === c.shopId);
+      return {
+        id: c.id,
+        chequeNumber: c.chequeNumber,
+        supplierName: c.supplierNameCache,
+        bankName: c.bankName,
+        amount: c.amount,
+        issueDate: c.issueDate,
+        dueDate: c.dueDate,
+        issuedBy: c.issuedByName || c.issuedBy,
+        branchName: shop?.name || c.shopId,
+        createdAt: c.createdAt,
+      };
+    });
+  }
+
+  if (category === "priceOverrides") {
+    const items = (store.saleItems || []).filter(
+      (item) => item.priceOverridden === true && item.needsReview !== false
+    );
+    const result = items.map((item) => {
+      const sale = (store.sales || []).find((s) => s.id === item.saleId);
+      const shop = (store.shops || []).find((s) => s.id === (item.shopId || sale?.shopId));
+      const listP = item.listPrice !== undefined ? item.listPrice : item.unitSellingPrice;
+      const reduction = Math.max(0, listP - item.unitSellingPrice);
+      const reductionPercent = listP > 0 ? (reduction / listP) * 100 : 0;
+      return {
+        id: item.id,
+        saleId: item.saleId,
+        invoiceNumber: sale?.invoiceNumber || "N/A",
+        productName: item.variantDescriptionCache || "Product",
+        variantId: item.variantId,
+        listPrice: listP,
+        priceCharged: item.unitSellingPrice,
+        reduction,
+        reductionPercent,
+        cashierName: sale?.cashierNameCache || "Cashier",
+        branchName: shop?.name || item.shopId || "Branch",
+        reason: item.priceOverrideReason || "Price adjusted at counter",
+        createdAt: sale?.createdAt || Date.now(),
+      };
+    });
+
+    if (filterOptions?.minDiscountPercent && filterOptions.minDiscountPercent > 0) {
+      return result.filter((r) => r.reductionPercent >= filterOptions.minDiscountPercent!);
+    }
+    return result;
+  }
+
+  if (category === "transfers") {
+    const list = (store.transfers || []).filter(
+      (t) => t.mode === "QUICK" && t.needsReview !== false && !t.reviewedAt
+    );
+    return list.map((t) => {
+      const fromShop = (store.shops || []).find((s) => s.id === t.sourceShopId);
+      const toShop = (store.shops || []).find((s) => s.id === t.destinationShopId);
+      return {
+        id: t.id,
+        transferNumber: t.transferNumber,
+        sourceBranch: fromShop?.name || t.sourceShopId,
+        destinationBranch: toShop?.name || t.destinationShopId,
+        totalQuantity: t.totalQuantity,
+        dispatchedBy: t.dispatchedBy,
+        dispatchedAt: t.dispatchedAt,
+        itemsCount: t.items?.length || 0,
+      };
+    });
+  }
+
+  if (category === "warranties") {
+    const list = (store.repairs || []).filter(
+      (r) => r.isWarranty && r.warrantyStatus === "UNVERIFIED" && r.needsReview !== false && !r.reviewedAt
+    );
+    return list.map((r) => {
+      const shop = (store.shops || []).find((s) => s.id === r.shopId);
+      return {
+        id: r.id,
+        repairNumber: r.repairNumber,
+        customerName: r.customerName,
+        customerPhone: r.customerPhone,
+        itemType: r.itemType || "FOOTWEAR",
+        itemDescription: `${r.shoeBrand || ""} ${r.shoeModel || ""}`.trim() || "Item",
+        warrantyCardNumber: r.warrantyCardNumber || "Manual Intake",
+        branchName: shop?.name || r.shopId,
+        receivedBy: r.receivedBy,
+        receivedAt: r.receivedAt,
+      };
+    });
+  }
+
+  if (category === "creditSales") {
+    const list = (store.sales || []).filter(
+      (s) => (s.paymentStatus === "CREDIT" || s.paymentStatus === "PARTIALLY_PAID") && s.needsReview !== false && !s.reviewedAt
+    );
+    return list.map((s) => {
+      const shop = (store.shops || []).find((sh) => sh.id === s.shopId);
+      return {
+        id: s.id,
+        invoiceNumber: s.invoiceNumber,
+        customerName: s.customerName || "Customer",
+        customerPhone: s.customerPhone || "N/A",
+        total: s.total,
+        amountPaid: s.amountPaid,
+        balanceDue: s.balanceDue,
+        paymentStatus: s.paymentStatus,
+        cashierName: s.cashierNameCache || "Cashier",
+        branchName: shop?.name || s.shopId,
+        createdAt: s.createdAt,
+      };
+    });
+  }
+
+  return [];
+}
+
+export function markReviewInboxItem(params: {
+  category: "products" | "suppliers" | "purchases" | "cheques" | "priceOverrides" | "transfers" | "warranties" | "creditSales";
+  itemId: string;
+  note?: string;
+  callingUser: UserProfile;
+}) {
+  if (!params.callingUser || params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error(ERROR_MESSAGES.PERMISSION_DENIED);
+  }
+  const store = loadLocalStore();
+  const userId = params.callingUser.uid;
+  const now = Date.now();
+  const note = params.note?.trim() || null;
+
+  if (params.category === "products") {
+    const prod = store.products.find((p) => p.id === params.itemId);
+    if (prod) {
+      prod.needsReview = false;
+      prod.reviewStatus = "APPROVED";
+      prod.reviewedBy = userId;
+      prod.reviewedAt = now;
+      prod.reviewNote = note;
+      (store.variants || []).filter((v) => v.productId === prod.id).forEach((v) => {
+        v.reviewStatus = "APPROVED";
+      });
+      logAuditAction(store, {
+        userId,
+        userEmailCache: params.callingUser.email || params.callingUser.displayName,
+        action: "REVIEW_PRODUCT",
+        entityType: "product",
+        entityId: prod.id,
+        after: { reviewStatus: "APPROVED", reviewedBy: userId, note },
+        reason: `Reviewed product ${prod.name}: ${note || "Approved"}`,
+      });
+    }
+  } else if (params.category === "suppliers") {
+    const sup = store.suppliers.find((s) => s.id === params.itemId);
+    if (sup) {
+      sup.needsReview = false;
+      sup.reviewedBy = userId;
+      sup.reviewedAt = now;
+      sup.reviewNote = note;
+      logAuditAction(store, {
+        userId,
+        userEmailCache: params.callingUser.email || params.callingUser.displayName,
+        action: "REVIEW_SUPPLIER",
+        entityType: "supplier",
+        entityId: sup.id,
+        after: { needsReview: false, reviewedBy: userId, note },
+        reason: `Reviewed supplier ${sup.name}: ${note || "Approved"}`,
+      });
+    }
+  } else if (params.category === "purchases") {
+    const pur = store.purchases.find((p) => p.id === params.itemId);
+    if (pur) {
+      pur.needsReview = false;
+      pur.reviewedBy = userId;
+      pur.reviewedAt = now;
+      pur.reviewNote = note;
+      logAuditAction(store, {
+        userId,
+        userEmailCache: params.callingUser.email || params.callingUser.displayName,
+        action: "REVIEW_PURCHASE",
+        entityType: "purchase",
+        entityId: pur.id,
+        after: { needsReview: false, reviewedBy: userId, note },
+        reason: `Reviewed purchase ${pur.purchaseNumber}: ${note || "Approved"}`,
+      });
+    }
+  } else if (params.category === "cheques") {
+    const chq = store.cheques.find((c) => c.id === params.itemId);
+    if (chq) {
+      chq.needsReview = false;
+      chq.reviewedBy = userId;
+      chq.reviewedAt = now;
+      chq.reviewNote = note;
+      logAuditAction(store, {
+        userId,
+        userEmailCache: params.callingUser.email || params.callingUser.displayName,
+        action: "REVIEW_CHEQUE",
+        entityType: "cheque",
+        entityId: chq.id,
+        after: { needsReview: false, reviewedBy: userId, note },
+        reason: `Reviewed cheque ${chq.chequeNumber}: ${note || "Approved"}`,
+      });
+    }
+  } else if (params.category === "priceOverrides") {
+    const sItem = store.saleItems.find((it) => it.id === params.itemId);
+    if (sItem) {
+      sItem.needsReview = false;
+      sItem.reviewedBy = userId;
+      sItem.reviewedAt = now;
+      sItem.reviewNote = note;
+      logAuditAction(store, {
+        userId,
+        userEmailCache: params.callingUser.email || params.callingUser.displayName,
+        action: "REVIEW_PRICE_OVERRIDE",
+        entityType: "saleItem",
+        entityId: sItem.id,
+        after: { needsReview: false, reviewedBy: userId, note },
+        reason: `Reviewed price override on ${sItem.variantDescriptionCache}: ${note || "Approved"}`,
+      });
+    }
+  } else if (params.category === "transfers") {
+    const trf = store.transfers.find((t) => t.id === params.itemId);
+    if (trf) {
+      trf.needsReview = false;
+      trf.reviewedBy = userId;
+      trf.reviewedAt = now;
+      trf.reviewNote = note;
+      logAuditAction(store, {
+        userId,
+        userEmailCache: params.callingUser.email || params.callingUser.displayName,
+        action: "REVIEW_TRANSFER",
+        entityType: "stockTransfer",
+        entityId: trf.id,
+        after: { needsReview: false, reviewedBy: userId, note },
+        reason: `Reviewed quick transfer ${trf.transferNumber}: ${note || "Approved"}`,
+      });
+    }
+  } else if (params.category === "warranties") {
+    const rep = store.repairs.find((r) => r.id === params.itemId);
+    if (rep) {
+      rep.needsReview = false;
+      rep.warrantyStatus = "VERIFIED";
+      rep.reviewedBy = userId;
+      rep.reviewedAt = now;
+      rep.reviewNote = note;
+      logAuditAction(store, {
+        userId,
+        userEmailCache: params.callingUser.email || params.callingUser.displayName,
+        action: "REVIEW_WARRANTY",
+        entityType: "shoeRepair",
+        entityId: rep.id,
+        after: { needsReview: false, warrantyStatus: "VERIFIED", reviewedBy: userId, note },
+        reason: `Reviewed unverified warranty repair ${rep.repairNumber}: ${note || "Approved"}`,
+      });
+    }
+  } else if (params.category === "creditSales") {
+    const sale = store.sales.find((s) => s.id === params.itemId);
+    if (sale) {
+      sale.needsReview = false;
+      sale.reviewedBy = userId;
+      sale.reviewedAt = now;
+      sale.reviewNote = note;
+      logAuditAction(store, {
+        userId,
+        userEmailCache: params.callingUser.email || params.callingUser.displayName,
+        action: "REVIEW_CREDIT_SALE",
+        entityType: "sale",
+        entityId: sale.id,
+        after: { needsReview: false, reviewedBy: userId, note },
+        reason: `Reviewed credit sale ${sale.invoiceNumber}: ${note || "Approved"}`,
+      });
+    }
+  }
+
+  saveLocalStore(store);
+  return { success: true };
+}
+

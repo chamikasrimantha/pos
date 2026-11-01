@@ -942,22 +942,30 @@ export function renderDailySalesReportHTML(
       <!-- Tender Breakdown -->
       <div style="margin-bottom: 16px;">
         <h4 style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase;">Payment Tender Breakdown</h4>
-        <div style="display: flex; gap: 12px; font-size: 12px;">
-          <div style="flex: 1; border: 1px solid #ccc; padding: 8px; border-radius: 4px;">
+        <div style="display: flex; gap: 8px; font-size: 11px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 120px; border: 1px solid #ccc; padding: 6px 8px; border-radius: 4px;">
             <div>Cash Collected:</div>
-            <div style="font-size: 14px; font-weight: bold;">${formatCurrency(report.payments?.cash || 0)}</div>
+            <div style="font-size: 13px; font-weight: bold;">${formatCurrency(report.payments?.cash || 0)}</div>
           </div>
-          <div style="flex: 1; border: 1px solid #ccc; padding: 8px; border-radius: 4px;">
+          <div style="flex: 1; min-width: 120px; border: 1px solid #ccc; padding: 6px 8px; border-radius: 4px;">
             <div>Card (POS Terminal):</div>
-            <div style="font-size: 14px; font-weight: bold;">${formatCurrency(report.payments?.card || 0)}</div>
+            <div style="font-size: 13px; font-weight: bold;">${formatCurrency(report.payments?.card || 0)}</div>
           </div>
-          <div style="flex: 1; border: 1px solid #ccc; padding: 8px; border-radius: 4px;">
+          <div style="flex: 1; min-width: 120px; border: 1px solid #ccc; padding: 6px 8px; border-radius: 4px;">
             <div>Bank Transfers:</div>
-            <div style="font-size: 14px; font-weight: bold;">${formatCurrency(report.payments?.bankTransfer || 0)}</div>
+            <div style="font-size: 13px; font-weight: bold;">${formatCurrency(report.payments?.bankTransfer || 0)}</div>
           </div>
-          <div style="flex: 1; border: 1px solid #ccc; padding: 8px; border-radius: 4px;">
+          <div style="flex: 1; min-width: 120px; border: 1px solid #ccc; padding: 6px 8px; border-radius: 4px;">
+            <div>Credit (Not Collected):</div>
+            <div style="font-size: 13px; font-weight: bold; color: #b45309;">${formatCurrency(report.payments?.credit || 0)}</div>
+          </div>
+          <div style="flex: 1; min-width: 120px; border: 1px solid #ccc; padding: 6px 8px; border-radius: 4px;">
+            <div>Payments on Account:</div>
+            <div style="font-size: 13px; font-weight: bold; color: #047857;">${formatCurrency(report.payments?.paymentsReceivedOnAccount || 0)}</div>
+          </div>
+          <div style="flex: 1; min-width: 100px; border: 1px solid #ccc; padding: 6px 8px; border-radius: 4px;">
             <div>Invoices Issued:</div>
-            <div style="font-size: 14px; font-weight: bold;">${report.invoiceCount} invoices</div>
+            <div style="font-size: 13px; font-weight: bold;">${report.invoiceCount} invoices</div>
           </div>
         </div>
       </div>
@@ -1017,6 +1025,79 @@ export function renderDailySalesReportHTML(
           </thead>
           <tbody>
             ${salesRows || `<tr><td colspan="6" style="padding: 8px; text-align: center; color: #888;">No invoices issued on this date.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Price Overrides Section -->
+      <div style="margin-bottom: 20px;">
+        <h4 style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase;">Price Overrides Log (${(report.priceOverrides || []).length})</h4>
+        <table style="width: 100%; border-collapse: collapse; border: 1px solid #eee;">
+          <thead>
+            <tr style="background: #f9fafb; font-size: 9px; text-transform: uppercase; border-bottom: 1px solid #ddd;">
+              <th style="padding: 4px; text-align: left;">Product</th>
+              <th style="padding: 4px; text-align: left;">Invoice #</th>
+              <th style="padding: 4px; text-align: right;">Catalogue Price</th>
+              <th style="padding: 4px; text-align: right;">Price Charged</th>
+              <th style="padding: 4px; text-align: right;">Discount Given</th>
+              <th style="padding: 4px; text-align: left;">Cashier</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              (report.priceOverrides || []).length > 0
+                ? (report.priceOverrides || [])
+                    .map(
+                      (po: any) => `
+                      <tr style="border-bottom: 1px solid #eee; font-size: 10px;">
+                        <td style="padding: 4px;">${po.productName}</td>
+                        <td style="padding: 4px;">${po.invoiceNumber}</td>
+                        <td style="padding: 4px; text-align: right;">${formatCurrency(po.listPrice)}</td>
+                        <td style="padding: 4px; text-align: right; font-weight: bold;">${formatCurrency(po.priceCharged)}</td>
+                        <td style="padding: 4px; text-align: right; color: #b91c1c;">-${formatCurrency(po.reduction)} (${po.reductionPercent?.toFixed(1)}%)</td>
+                        <td style="padding: 4px;">${po.cashierName}</td>
+                      </tr>
+                    `
+                    )
+                    .join("")
+                : `<tr><td colspan="6" style="padding: 8px; text-align: center; color: #888; font-size: 10px;">No price overrides recorded on this date.</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Purchases Paid in Cash Section -->
+      <div style="margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+          <h4 style="margin: 0; font-size: 12px; text-transform: uppercase;">Purchases Paid in Cash (${(report.purchasesPaidInCash || []).length})</h4>
+          <span style="font-size: 11px; font-weight: bold; color: #b91c1c;">Total Cash Spent: ${formatCurrency(report.totalPurchasesCash || 0)}</span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; border: 1px solid #eee;">
+          <thead>
+            <tr style="background: #f9fafb; font-size: 9px; text-transform: uppercase; border-bottom: 1px solid #ddd;">
+              <th style="padding: 4px; text-align: left;">Purchase #</th>
+              <th style="padding: 4px; text-align: left;">Supplier</th>
+              <th style="padding: 4px; text-align: right;">Cash Paid</th>
+              <th style="padding: 4px; text-align: left;">Receiver / Cashier</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              (report.purchasesPaidInCash || []).length > 0
+                ? (report.purchasesPaidInCash || [])
+                    .map(
+                      (pc: any) => `
+                      <tr style="border-bottom: 1px solid #eee; font-size: 10px;">
+                        <td style="padding: 4px;">${pc.purchaseNumber}</td>
+                        <td style="padding: 4px;">${pc.supplierName}</td>
+                        <td style="padding: 4px; text-align: right; font-weight: bold;">${formatCurrency(pc.paidAmount)}</td>
+                        <td style="padding: 4px;">${pc.receivedBy}</td>
+                      </tr>
+                    `
+                    )
+                    .join("")
+                : `<tr><td colspan="4" style="padding: 8px; text-align: center; color: #888; font-size: 10px;">No cash purchases paid on this date.</td></tr>`
+            }
           </tbody>
         </table>
       </div>
@@ -1093,7 +1174,7 @@ export function renderDayEndStatusReportHTML(
 
       <!-- Invoice Counts by Status -->
       <div style="margin-bottom: 16px;">
-        <h4 style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase;">Invoice Status Breakdown</h4>
+        <h4 style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase;">Invoice Return Status Breakdown</h4>
         <div style="display: flex; gap: 8px; font-size: 12px;">
           <div style="flex: 1; border: 1px solid #ccc; padding: 8px; text-align: center; border-radius: 4px;">
             <div style="color: #555; font-size: 11px;">Completed</div>
@@ -1117,6 +1198,41 @@ export function renderDayEndStatusReportHTML(
           </div>
         </div>
       </div>
+
+      <!-- Invoice Payment Settlement Status (Section 10.2) -->
+      <div style="margin-bottom: 16px;">
+        <h4 style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase;">Invoice Payment Settlement Status</h4>
+        <div style="display: flex; gap: 8px; font-size: 12px;">
+          <div style="flex: 1; border: 1px solid #166534; background: #f0fdf4; padding: 8px; text-align: center; border-radius: 4px;">
+            <div style="color: #166534; font-size: 11px; font-weight: bold;">Fully Paid Invoices</div>
+            <div style="font-size: 16px; font-weight: bold; color: #166534;">${statusData.paidInvoicesCount ?? statusData.completedInvoices}</div>
+          </div>
+          <div style="flex: 1; border: 1px solid #b45309; background: #fffbeb; padding: 8px; text-align: center; border-radius: 4px;">
+            <div style="color: #b45309; font-size: 11px; font-weight: bold;">Partially Paid</div>
+            <div style="font-size: 16px; font-weight: bold; color: #b45309;">${statusData.partiallyPaidInvoicesCount || 0}</div>
+          </div>
+          <div style="flex: 1; border: 1px solid #b91c1c; background: #fef2f2; padding: 8px; text-align: center; border-radius: 4px;">
+            <div style="color: #b91c1c; font-size: 11px; font-weight: bold;">Credit Sales</div>
+            <div style="font-size: 16px; font-weight: bold; color: #b91c1c;">${statusData.creditInvoicesCount || 0}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Credit Totals (Section 10.2) -->
+      ${
+        ((statusData.creditInvoicesCount || 0) > 0 || (statusData.partiallyPaidInvoicesCount || 0) > 0 || (statusData.totalCreditBalanceDue || 0) > 0)
+          ? `
+          <div style="margin-bottom: 16px; border: 1px solid #b45309; background: #fffbeb; padding: 10px; border-radius: 4px; font-size: 12px;">
+            <h4 style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase; color: #b45309;">Day's Credit Extended & Balances</h4>
+            <div style="display: flex; justify-content: space-between;">
+              <div>Total Credit Sales: <strong>${formatCurrency(statusData.totalCreditSalesAmount || 0)}</strong></div>
+              <div>Collected at Counter: <strong>${formatCurrency(statusData.totalCreditCollectedNow || 0)}</strong></div>
+              <div>Outstanding Balance Due: <strong style="color: #b91c1c;">${formatCurrency(statusData.totalCreditBalanceDue || 0)}</strong></div>
+            </div>
+          </div>
+          `
+          : ""
+      }
 
       <!-- Sequence Integrity -->
       <div style="margin-bottom: 16px; border: 1px solid #ccc; padding: 10px; border-radius: 4px; font-size: 12px;">

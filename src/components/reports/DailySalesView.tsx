@@ -719,7 +719,7 @@ export function DailySalesView() {
         <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--ink)", marginBottom: "14px" }}>
           Payment Tender Breakdown
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
           <div style={{ padding: "12px 16px", background: "var(--surface-muted, #f9fafb)", borderRadius: "var(--radius-control)", border: "1px solid var(--line)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--ink-2)", fontSize: "13px" }}>
               <Coins size={16} />
@@ -747,6 +747,26 @@ export function DailySalesView() {
             </div>
             <div style={{ fontSize: "18px", fontWeight: "800", color: "var(--ink)", marginTop: "4px" }}>
               {formatCurrency(dailyData.payments.bankTransfer)}
+            </div>
+          </div>
+
+          <div style={{ padding: "12px 16px", background: "var(--warning-soft, #fffbeb)", borderRadius: "var(--radius-control)", border: "1px solid var(--warning-line, #fde68a)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--warning-ink, #92400e)", fontSize: "13px" }}>
+              <Receipt size={16} />
+              <span>Credit (Not Collected)</span>
+            </div>
+            <div style={{ fontSize: "18px", fontWeight: "800", color: "var(--warning-ink, #92400e)", marginTop: "4px" }}>
+              {formatCurrency(dailyData.payments.credit)}
+            </div>
+          </div>
+
+          <div style={{ padding: "12px 16px", background: "var(--success-soft, #f0fdf4)", borderRadius: "var(--radius-control)", border: "1px solid var(--success-line, #bbf7d0)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--success-ink, #166534)", fontSize: "13px" }}>
+              <CheckCircle2 size={16} />
+              <span>Received on Account</span>
+            </div>
+            <div style={{ fontSize: "18px", fontWeight: "800", color: "var(--success)", marginTop: "4px" }}>
+              {formatCurrency(dailyData.payments.paymentsReceivedOnAccount)}
             </div>
           </div>
         </div>
@@ -961,6 +981,140 @@ export function DailySalesView() {
               </div>
             ))
           )}
+        </div>
+      </div>
+
+      {/* Price Overrides Section (Change Request 02 - Section 10.2) */}
+      <div
+        className="card"
+        style={{
+          padding: "20px",
+          marginBottom: "24px",
+          background: "var(--surface)",
+          border: "1px solid var(--line)",
+          borderRadius: "var(--radius-tile)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+          <div>
+            <div style={{ fontSize: "15px", fontWeight: "700", color: "var(--ink)" }}>
+              Price Overrides on this Day
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--ink-3)", marginTop: "2px" }}>
+              Counter sales where selling price differed from catalogue price
+            </div>
+          </div>
+          <span className="badge badge-neutral" style={{ fontWeight: "700" }}>
+            {(dailyData.priceOverrides || []).length} items
+          </span>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="pos-table" style={{ width: "100%", fontSize: "13px" }}>
+            <thead>
+              <tr style={{ background: "var(--surface-sunken)" }}>
+                <th style={{ padding: "8px 12px", textAlign: "left" }}>Product</th>
+                <th style={{ padding: "8px 12px", textAlign: "left" }}>Invoice #</th>
+                <th style={{ padding: "8px 12px", textAlign: "right" }}>Catalogue Price</th>
+                <th style={{ padding: "8px 12px", textAlign: "right" }}>Charged</th>
+                <th style={{ padding: "8px 12px", textAlign: "right" }}>Reduction</th>
+                <th style={{ padding: "8px 12px", textAlign: "left" }}>Cashier</th>
+                <th style={{ padding: "8px 12px", textAlign: "left" }}>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(!dailyData.priceOverrides || dailyData.priceOverrides.length === 0) ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: "16px", textAlign: "center", color: "var(--ink-3)" }}>
+                    No price overrides recorded for this date.
+                  </td>
+                </tr>
+              ) : (
+                dailyData.priceOverrides.map((po, idx) => (
+                  <tr key={`${po.saleId}_${idx}`}>
+                    <td style={{ padding: "8px 12px", fontWeight: "600" }}>{po.productName}</td>
+                    <td style={{ padding: "8px 12px", fontVariantNumeric: "tabular-nums" }}>{po.invoiceNumber}</td>
+                    <td style={{ padding: "8px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      {formatCurrency(po.listPrice)}
+                    </td>
+                    <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
+                      {formatCurrency(po.priceCharged)}
+                    </td>
+                    <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--danger)", fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
+                      -{formatCurrency(po.reduction)} ({po.reductionPercent.toFixed(1)}%)
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>{po.cashierName}</td>
+                    <td style={{ padding: "8px 12px", color: "var(--ink-2)", fontSize: "12px" }}>{po.reason || "Manual override"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Purchases Paid in Cash Section (Change Request 02 - Section 10.2) */}
+      <div
+        className="card"
+        style={{
+          padding: "20px",
+          marginBottom: "24px",
+          background: "var(--surface)",
+          border: "1px solid var(--line)",
+          borderRadius: "var(--radius-tile)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+          <div>
+            <div style={{ fontSize: "15px", fontWeight: "700", color: "var(--ink)" }}>
+              Purchases Paid in Cash
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--ink-3)", marginTop: "2px" }}>
+              Supplier invoices settled using counter cash today
+            </div>
+          </div>
+          <span className="badge badge-neutral" style={{ fontWeight: "700" }}>
+            Total Outflow: {formatCurrency(dailyData.totalPurchasesCash || 0)}
+          </span>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="pos-table" style={{ width: "100%", fontSize: "13px" }}>
+            <thead>
+              <tr style={{ background: "var(--surface-sunken)" }}>
+                <th style={{ padding: "8px 12px", textAlign: "left" }}>Purchase #</th>
+                <th style={{ padding: "8px 12px", textAlign: "left" }}>Supplier</th>
+                <th style={{ padding: "8px 12px", textAlign: "right" }}>Bill Amount</th>
+                <th style={{ padding: "8px 12px", textAlign: "right" }}>Cash Paid</th>
+                <th style={{ padding: "8px 12px", textAlign: "left" }}>Received By</th>
+                <th style={{ padding: "8px 12px", textAlign: "left" }}>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(!dailyData.purchasesPaidInCash || dailyData.purchasesPaidInCash.length === 0) ? (
+                <tr>
+                  <td colSpan={6} style={{ padding: "16px", textAlign: "center", color: "var(--ink-3)" }}>
+                    No cash purchases paid on this date.
+                  </td>
+                </tr>
+              ) : (
+                dailyData.purchasesPaidInCash.map((pc) => (
+                  <tr key={pc.id}>
+                    <td style={{ padding: "8px 12px", fontWeight: "600" }}>{pc.purchaseNumber}</td>
+                    <td style={{ padding: "8px 12px" }}>{pc.supplierName}</td>
+                    <td style={{ padding: "8px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      {formatCurrency(pc.amount)}
+                    </td>
+                    <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: "700", color: "var(--danger)", fontVariantNumeric: "tabular-nums" }}>
+                      {formatCurrency(pc.paidAmount)}
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>{pc.receivedBy}</td>
+                    <td style={{ padding: "8px 12px", color: "var(--ink-2)", fontSize: "12px" }}>{formatDate(pc.time)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

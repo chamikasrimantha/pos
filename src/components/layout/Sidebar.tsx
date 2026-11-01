@@ -1,8 +1,9 @@
 // src/components/layout/Sidebar.tsx
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { useApp } from "@/context/AppContext";
+import { getReviewInboxCounts } from "@/lib/firestore-service";
 import {
   ShoppingBag,
   Coins,
@@ -31,7 +32,16 @@ interface NavItem {
 }
 
 export function Sidebar() {
-  const { activeView, setActiveView, currentUser, isModuleVisible, logout } = useApp();
+  const { activeView, setActiveView, currentUser, isModuleVisible, logout, dataVersion } = useApp();
+
+  const reviewCounts = useMemo(() => {
+    if (!currentUser || currentUser.role !== "SUPER_ADMIN") return 0;
+    try {
+      return getReviewInboxCounts(currentUser).total;
+    } catch {
+      return 0;
+    }
+  }, [currentUser, dataVersion]);
 
   const allNavItems: NavItem[] = [
     { id: "pos",          label: "POS Billing Counter",  icon: ShoppingBag },
@@ -165,6 +175,22 @@ export function Sidebar() {
               <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {item.label}
               </span>
+              {item.id === "reviewInbox" && reviewCounts > 0 && (
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    background: "var(--danger)",
+                    color: "#ffffff",
+                    fontSize: "11px",
+                    fontWeight: "800",
+                    padding: "1px 6px",
+                    borderRadius: "9999px",
+                    lineHeight: "1.4",
+                  }}
+                >
+                  {reviewCounts}
+                </span>
+              )}
             </button>
           );
         })}

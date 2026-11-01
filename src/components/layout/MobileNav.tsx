@@ -1,8 +1,9 @@
 // src/components/layout/MobileNav.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useApp } from "@/context/AppContext";
+import { getReviewInboxCounts } from "@/lib/firestore-service";
 import {
   ShoppingBag,
   RotateCcw,
@@ -25,8 +26,17 @@ import {
 } from "lucide-react";
 
 export function MobileNav() {
-  const { currentUser, activeView, setActiveView, logout } = useApp();
+  const { currentUser, activeView, setActiveView, logout, dataVersion } = useApp();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+
+  const reviewCounts = useMemo(() => {
+    if (!currentUser || currentUser.role !== "SUPER_ADMIN") return 0;
+    try {
+      return getReviewInboxCounts(currentUser).total;
+    } catch {
+      return 0;
+    }
+  }, [currentUser, dataVersion]);
 
   if (!currentUser) return null;
 
@@ -176,6 +186,23 @@ export function MobileNav() {
         >
           <MoreHorizontal size={20} />
           <span>More</span>
+          {reviewCounts > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: "6px",
+                right: "16px",
+                background: "var(--danger)",
+                color: "#fff",
+                fontSize: "10px",
+                fontWeight: "800",
+                padding: "1px 5px",
+                borderRadius: "9999px",
+              }}
+            >
+              {reviewCounts}
+            </span>
+          )}
         </button>
       </nav>
 
@@ -246,6 +273,21 @@ export function MobileNav() {
                   >
                     <Icon size={18} color={isActive ? "var(--primary)" : "var(--ink-2)"} />
                     <span>{item.label}</span>
+                    {item.id === "reviewInbox" && reviewCounts > 0 && (
+                      <span
+                        style={{
+                          marginLeft: "auto",
+                          background: "var(--danger)",
+                          color: "#ffffff",
+                          fontSize: "11px",
+                          fontWeight: "800",
+                          padding: "1px 6px",
+                          borderRadius: "9999px",
+                        }}
+                      >
+                        {reviewCounts}
+                      </span>
+                    )}
                   </button>
                 );
               })}

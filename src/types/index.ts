@@ -81,6 +81,10 @@ export interface Product {
   active: boolean;
   reviewStatus?: ReviewStatus;
   reviewReason?: string;
+  needsReview?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: number | null;
+  reviewNote?: string | null;
   createdAt: number;
   updatedAt: number;
   createdBy: string;
@@ -336,6 +340,10 @@ export interface Sale {
   cancelledBy?: string;
   cancelReason?: string;
   idempotencyKey?: string;
+  needsReview?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: number | null;
+  reviewNote?: string | null;
   createdAt: number;
   saleDate: number;
 }
@@ -357,6 +365,10 @@ export interface SaleItem {
   listPrice?: number;
   priceOverridden?: boolean;
   priceOverrideReason?: string;
+  needsReview?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: number | null;
+  reviewNote?: string | null;
 }
 
 export type ReturnType = "RETURN_REFUND" | "SIZE_EXCHANGE";
@@ -389,6 +401,10 @@ export interface CustomerReturn {
   notes?: string;
   approvedBy?: string;
   idempotencyKey?: string;
+  needsReview?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: number | null;
+  reviewNote?: string | null;
   createdAt: number;
 }
 
@@ -489,6 +505,10 @@ export interface StockTransfer {
   mode?: "QUICK" | "FORMAL";
   notes?: string | null;
   idempotencyKey?: string | null;
+  needsReview?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: number | null;
+  reviewNote?: string | null;
 }
 
 export interface Supplier {
@@ -601,6 +621,9 @@ export interface Cheque {
   purchaseId?: string;
   purchaseNumber?: string;
   needsReview?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: number | null;
+  reviewNote?: string | null;
   issuedBy?: string;
   issuedByName?: string;
 }
@@ -820,3 +843,40 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   PASSWORD_TOO_WEAK: "Choose a longer password (at least 10 characters).",
   OFFLINE: "You are offline. Selling is paused until the connection returns.",
 };
+
+export interface ReviewInboxCounts {
+  products: number;
+  suppliers: number;
+  purchases: number;
+  cheques: number;
+  priceOverrides: number;
+  transfers: number;
+  warranties: number;
+  creditSales: number;
+  total: number;
+}
+
+export interface PriceOverrideItem {
+  saleId: string;
+  invoiceNumber: string;
+  productName: string;
+  variantSku?: string;
+  listPrice: number;
+  priceCharged: number;
+  reduction: number;
+  reductionPercent: number;
+  cashierName: string;
+  reason?: string;
+  time: number;
+}
+
+export interface PurchaseCashItem {
+  id: string;
+  purchaseNumber: string;
+  supplierName: string;
+  amount: number;
+  paidAmount: number;
+  receivedBy: string;
+  time: number;
+}
+
