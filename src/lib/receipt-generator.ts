@@ -12,7 +12,6 @@ import {
   CustomerPaymentReceipt,
   CashAdvanceReceipt,
   CustomerLedgerEntry,
-  SettledInvoiceRecord,
 } from "@/types";
 import { generateBarcodeSVG } from "./barcode-svg";
 
@@ -1101,7 +1100,7 @@ export function renderCustomerPaymentReceiptHTML(
 ): string {
   const settledRows = (receipt.settledInvoices || [])
     .map(
-      (inv: SettledInvoiceRecord) => `
+      (inv) => `
     <tr>
       <td style="padding: 4px 0; font-size: 11px;">${inv.invoiceNumber}</td>
       <td style="padding: 4px 0; text-align: right; font-variant-numeric: tabular-nums; font-size: 11px;">
