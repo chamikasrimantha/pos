@@ -219,12 +219,93 @@ export interface CashMovement {
   createdAt: number;
 }
 
-export type PaymentMethod = "CASH" | "CARD" | "BANK_TRANSFER" | "OTHER";
+export type PaymentMethod = "CASH" | "CARD" | "BANK_TRANSFER" | "CREDIT" | "OTHER";
+export type PaymentStatus = "PAID" | "PARTIALLY_PAID" | "CREDIT";
 
 export interface PaymentEntry {
   method: PaymentMethod;
   amount: number;
   reference?: string;
+}
+
+export type CustomerType = "REGULAR" | "STAFF";
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  type: CustomerType;
+  employeeId?: string;
+  address?: string;
+  creditLimit?: number;
+  notes?: string;
+  active: boolean;
+  createdBy: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export type CustomerLedgerEntryType =
+  | "CREDIT_SALE"
+  | "CASH_ADVANCE"
+  | "PAYMENT_RECEIVED"
+  | "RETURN_ADJUSTMENT"
+  | "SALARY_RECOVERY"
+  | "ADJUSTMENT"
+  | "WRITE_OFF";
+
+export interface CustomerLedgerEntry {
+  id: string;
+  customerId: string;
+  shopId: string;
+  type: CustomerLedgerEntryType;
+  amount: number;
+  direction: "DEBIT" | "CREDIT"; // DEBIT increases customer balance (debt); CREDIT decreases it
+  saleId?: string;
+  referenceNumber: string;
+  method?: "CASH" | "CARD" | "BANK_TRANSFER" | "PAYROLL" | "ADJUSTMENT" | "CREDIT";
+  note?: string;
+  createdBy: string;
+  createdAt: number;
+}
+
+export interface SettledInvoiceRecord {
+  saleId: string;
+  invoiceNumber: string;
+  amountApplied: number;
+  balanceRemaining: number;
+}
+
+export interface CustomerPaymentReceipt {
+  id: string;
+  paymentNumber: string; // e.g. "RW-PAY-000001"
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  shopId: string;
+  amount: number;
+  method: "CASH" | "CARD" | "BANK_TRANSFER";
+  reference?: string;
+  note?: string;
+  settledInvoices: SettledInvoiceRecord[];
+  receivedBy: string;
+  receivedByName: string;
+  createdAt: number;
+}
+
+export interface CashAdvanceReceipt {
+  id: string;
+  voucherNumber: string; // e.g. "RW-ADV-000001"
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  shopId: string;
+  amount: number;
+  date: number;
+  note?: string;
+  issuedBy: string;
+  issuedByName: string;
+  createdAt: number;
 }
 
 export interface Sale {
@@ -234,12 +315,16 @@ export interface Sale {
   cashierId: string;
   cashierNameCache: string;
   shiftId?: string; // Optional legacy shift ID
+  customerId?: string;
   customerName?: string;
   customerPhone?: string;
   subtotal: number;
   discount: number;
   taxAmount: number;
   total: number;
+  amountPaid: number;
+  balanceDue: number;
+  paymentStatus: PaymentStatus;
   payments: PaymentEntry[];
   amountReceived?: number;
   changeGiven?: number;
@@ -371,18 +456,13 @@ export interface StockTransfer {
   sourceShopId: string;
   destinationShopId: string;
   status: TransferStatus;
-  mode?: "QUICK" | "FORMAL";
   items: StockTransferItem[];
   totalQuantity: number;
   dispatchedBy: string;
-  dispatchedByName?: string | null;
   dispatchedAt: number;
   receivedBy?: string | null;
-  receivedByName?: string | null;
   receivedAt?: number | null;
   discrepancyNotes?: string | null;
-  notes?: string | null;
-  idempotencyKey?: string | null;
 }
 
 export interface Supplier {

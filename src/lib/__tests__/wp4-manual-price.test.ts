@@ -303,7 +303,7 @@ describe("WP4: POS Manual Price, Price Per Unit, and Scan Popup", () => {
       unitPriceRefunded: original.items[0].unitSellingPrice, // 17500
       condition: "NEW_RESELLABLE",
       restocked: true,
-      reason: "Size misfit",
+      reason: "SIZE_FIT",
       variantDescriptionCache: original.items[0].variantDescriptionCache,
     };
 

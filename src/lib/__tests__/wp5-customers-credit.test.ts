@@ -246,13 +246,13 @@ describe("WP5: Customers, Credit Sales, Customer Ledger, FIFO Settlement, and Ca
     expect(receipt.settledInvoices).toHaveLength(2);
 
     // Invoice 1 settled completely
-    const settled1 = receipt.settledInvoices.find((s) => s.saleId === res1.sale.id);
+    const settled1 = receipt.settledInvoices.find((s: any) => s.saleId === res1.sale.id);
     expect(settled1).toBeDefined();
     expect(settled1?.amountApplied).toBe(6000);
     expect(settled1?.balanceRemaining).toBe(0);
 
     // Invoice 2 partially settled
-    const settled2 = receipt.settledInvoices.find((s) => s.saleId === res2.sale.id);
+    const settled2 = receipt.settledInvoices.find((s: any) => s.saleId === res2.sale.id);
     expect(settled2).toBeDefined();
     expect(settled2?.amountApplied).toBe(4000);
     expect(settled2?.balanceRemaining).toBe(4000);
