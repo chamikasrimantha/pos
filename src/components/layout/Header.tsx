@@ -3,10 +3,7 @@
 
 import React from "react";
 import { useApp } from "@/context/AppContext";
-import { formatCurrency } from "@/lib/receipt-generator";
-import { computeExpectedDrawerCash } from "@/lib/shift-math";
-import { formatColomboTime } from "@/lib/date-utils";
-import { RotateCw, ChevronDown, User, CheckCircle2, Lock, LogOut } from "lucide-react";
+import { RotateCw, ChevronDown, User, LogOut } from "lucide-react";
 
 export function Header() {
   const {
@@ -14,14 +11,10 @@ export function Header() {
     activeShop,
     setActiveShopId,
     currentUser,
-    activeShift,
-    setActiveView,
     refreshData,
     showToast,
     logout,
   } = useApp();
-
-  const shiftSince = activeShift ? formatColomboTime(activeShift.openedAt) : "";
 
   const isAdmin = currentUser?.role === "SUPER_ADMIN";
 
@@ -89,64 +82,6 @@ export function Header() {
               Outlet {activeShop.code} &bull; Locked
             </div>
           </div>
-        )}
-      </div>
-
-      {/* ── Center: Cashier Shift Status Pill ────────────────── */}
-      <div style={{ display: "flex", alignItems: "center" }}>
-        {activeShift ? (
-          <button
-            onClick={() => setActiveView("shifts")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "4px 10px",
-              background: "var(--success-soft)",
-              border: "1px solid #bbf7d0",
-              borderRadius: "999px",
-              cursor: "pointer",
-              fontSize: "12px",
-              color: "var(--success)",
-              fontWeight: "600",
-            }}
-          >
-            <span
-              style={{
-                width: "7px",
-                height: "7px",
-                borderRadius: "50%",
-                background: "var(--success)",
-                display: "inline-block",
-              }}
-            />
-            <span style={{ display: "none" }} className="shift-label-full">
-              Shift #{activeShift.shiftNumber.slice(-4)} &bull; Since {shiftSince}
-            </span>
-            <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: "700" }}>
-              {formatCurrency(computeExpectedDrawerCash(activeShift))}
-            </span>
-          </button>
-        ) : (
-          <button
-            onClick={() => setActiveView("shifts")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "4px 10px",
-              background: "var(--warning-soft)",
-              border: "1px solid #fed7aa",
-              borderRadius: "999px",
-              cursor: "pointer",
-              fontSize: "12px",
-              color: "var(--warning)",
-              fontWeight: "600",
-            }}
-          >
-            <Lock size={12} />
-            <span>Open Shift</span>
-          </button>
         )}
       </div>
 

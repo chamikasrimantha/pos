@@ -193,8 +193,8 @@ export function DailySalesView() {
           </h1>
           <p style={{ fontSize: "14px", color: "var(--ink-2)", margin: "4px 0 0" }}>
             {isSuperAdmin
-              ? "Audit daily sales, cashier shift reconciliation, and batch reprint invoices for any month."
-              : `Sales and cashier drawer audit for ${currentUser?.displayName}.`}
+              ? "Audit daily sales, transaction reconciliation, and batch reprint invoices for any month."
+              : `Sales and transaction audit for ${currentUser?.displayName}.`}
           </p>
         </div>
 
@@ -752,7 +752,7 @@ export function DailySalesView() {
         </div>
       </div>
 
-      {/* Cashier Shifts Table */}
+      {/* Daily Cash Summary */}
       <div
         className="card"
         style={{
@@ -763,108 +763,41 @@ export function DailySalesView() {
           borderRadius: "var(--radius-tile)",
         }}
       >
-        <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--ink)", marginBottom: "12px" }}>
-          Cashier Shifts & Drawer Reconciliation
-        </div>
-        {/* Desktop Shifts Table */}
-        <div className="desktop-only-table" style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-            <thead>
-              <tr style={{ background: "var(--surface-muted, #f9fafb)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
-                <th style={{ padding: "8px 12px" }}>Cashier</th>
-                <th style={{ padding: "8px 12px", textAlign: "center" }}>Status</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Opening Float</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Cash Sales</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Cash Out</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Expected Cash</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Counted Cash</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Variance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dailyData.shifts.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ padding: "16px", textAlign: "center", color: "var(--ink-3)" }}>
-                    No shifts recorded for this day.
-                  </td>
-                </tr>
-              ) : (
-                dailyData.shifts.map((sh) => (
-                  <tr key={sh.id} style={{ borderBottom: "1px solid var(--line)" }}>
-                    <td style={{ padding: "10px 12px", fontWeight: "600" }}>{sh.cashierName}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "center" }}>
-                      <span
-                        className={`badge ${sh.status === "CLOSED" ? "badge-success" : "badge-primary"}`}
-                        style={{ fontSize: "11px" }}
-                      >
-                        {sh.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(sh.openingFloat)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(sh.cashSales)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(sh.cashDrops)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: "700" }}>{formatCurrency(sh.expectedCash)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right" }}>
-                      {sh.closingCountedCash !== undefined ? formatCurrency(sh.closingCountedCash) : "Open"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "10px 12px",
-                        textAlign: "right",
-                        fontWeight: "700",
-                        color: (sh.variance || 0) < 0 ? "var(--danger)" : "var(--success)",
-                      }}
-                    >
-                      {sh.variance !== undefined ? formatCurrency(sh.variance) : "-"}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+          <div style={{ fontSize: "15px", fontWeight: "700", color: "var(--ink)", display: "flex", alignItems: "center", gap: "8px" }}>
+            <Coins size={18} style={{ color: "var(--primary)" }} />
+            <span>Daily Cash Movement</span>
+          </div>
+          <div style={{ fontSize: "14px", fontWeight: "800", color: (dailyData.dailyCashSummary?.netCashMovement || 0) >= 0 ? "var(--success)" : "var(--danger)", fontVariantNumeric: "tabular-nums" }}>
+            Net: {formatCurrency(dailyData.dailyCashSummary?.netCashMovement || 0)}
+          </div>
         </div>
 
-        {/* Mobile Shifts Cards */}
-        <div className="mobile-only-cards" style={{ display: "none", flexDirection: "column", gap: "10px" }}>
-          {dailyData.shifts.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "16px", color: "var(--ink-3)", fontSize: "13px" }}>
-              No shifts recorded for this day.
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+          <div style={{ padding: "12px", background: "var(--surface-sunken)", borderRadius: "8px", border: "1px solid var(--line)" }}>
+            <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>Gross Cash Sales</div>
+            <div style={{ fontSize: "16px", fontWeight: "700", color: "var(--ink)", marginTop: "2px", fontVariantNumeric: "tabular-nums" }}>
+              {formatCurrency(dailyData.dailyCashSummary?.cashSales || dailyData.payments.cash)}
             </div>
-          ) : (
-            dailyData.shifts.map((sh) => (
-              <div
-                key={sh.id}
-                style={{
-                  background: "var(--surface-sunken)",
-                  border: "1px solid var(--line)",
-                  borderRadius: "14px",
-                  padding: "12px 14px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontWeight: "800", color: "var(--ink)", fontSize: "14px" }}>{sh.cashierName}</span>
-                  <span className={`badge ${sh.status === "CLOSED" ? "badge-success" : "badge-primary"}`} style={{ fontSize: "11px" }}>
-                    {sh.status}
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", fontSize: "12px", color: "var(--ink-2)" }}>
-                  <div>Float: <strong>{formatCurrency(sh.openingFloat)}</strong></div>
-                  <div>Cash Sales: <strong>{formatCurrency(sh.cashSales)}</strong></div>
-                  <div>Cash Out: <strong>{formatCurrency(sh.cashDrops)}</strong></div>
-                  <div>Expected: <strong style={{ color: "var(--primary)" }}>{formatCurrency(sh.expectedCash)}</strong></div>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line)", paddingTop: "6px", fontSize: "13px" }}>
-                  <span>Counted: <strong>{sh.closingCountedCash !== undefined ? formatCurrency(sh.closingCountedCash) : "Open"}</strong></span>
-                  <span style={{ fontWeight: "800", color: (sh.variance || 0) < 0 ? "var(--danger)" : "var(--success)" }}>
-                    Var: {sh.variance !== undefined ? formatCurrency(sh.variance) : "-"}
-                  </span>
-                </div>
-              </div>
-            ))
-          )}
+          </div>
+          <div style={{ padding: "12px", background: "var(--surface-sunken)", borderRadius: "8px", border: "1px solid var(--line)" }}>
+            <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>Repair Cash Collected</div>
+            <div style={{ fontSize: "16px", fontWeight: "700", color: "var(--ink)", marginTop: "2px", fontVariantNumeric: "tabular-nums" }}>
+              {formatCurrency(dailyData.dailyCashSummary?.repairCashCollected || dailyData.repairIncome || 0)}
+            </div>
+          </div>
+          <div style={{ padding: "12px", background: "var(--surface-sunken)", borderRadius: "8px", border: "1px solid var(--line)" }}>
+            <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>Cash Refunds</div>
+            <div style={{ fontSize: "16px", fontWeight: "700", color: "var(--danger)", marginTop: "2px", fontVariantNumeric: "tabular-nums" }}>
+              -{formatCurrency(dailyData.dailyCashSummary?.cashRefunds || 0)}
+            </div>
+          </div>
+          <div style={{ padding: "12px", background: "var(--surface-sunken)", borderRadius: "8px", border: "1px solid var(--line)" }}>
+            <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>Net Cash Movement</div>
+            <div style={{ fontSize: "16px", fontWeight: "800", color: (dailyData.dailyCashSummary?.netCashMovement || 0) >= 0 ? "var(--success)" : "var(--danger)", marginTop: "2px", fontVariantNumeric: "tabular-nums" }}>
+              {formatCurrency(dailyData.dailyCashSummary?.netCashMovement || 0)}
+            </div>
+          </div>
         </div>
       </div>
 

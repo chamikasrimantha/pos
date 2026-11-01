@@ -7,7 +7,6 @@ import { DEFAULT_SETTINGS } from "@/lib/seed-data";
 import {
   getShops,
   getUsers,
-  getActiveShift,
   getSystemSettings,
   seedDatabaseIfEmpty,
 } from "@/lib/firestore-service";
@@ -42,8 +41,6 @@ interface AppContextType {
   setSelectedOutletSlug: (slug: string | null) => void;
   login: (email: string, password: string, outletSlug?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  activeShift: CashierShift | null;
-  refreshActiveShift: () => void;
   settings: SystemSettings;
   toasts: ToastNotification[];
   showToast: (message: string, type?: "success" | "error" | "info") => void;
@@ -68,7 +65,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [selectedOutletSlug, setSelectedOutletSlugState] = useState<string | null>(null);
-  const [activeShift, setActiveShift] = useState<CashierShift | null>(null);
   const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const [dataVersion, setDataVersion] = useState<number>(1);
@@ -168,20 +164,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Track active shift for current user & active shop
-  const refreshActiveShift = useCallback(() => {
-    if (!activeShop || !currentUser) {
-      setActiveShift(null);
-      return;
-    }
-    const shift = getActiveShift(activeShop.id, currentUser.uid);
-    setActiveShift(shift);
-  }, [activeShop, currentUser]);
-
-  useEffect(() => {
-    refreshActiveShift();
-  }, [refreshActiveShift, dataVersion]);
-
   // Handle Login Authentication with Outlet Scoping (Section 4)
   const login = async (
     email: string,
@@ -247,7 +229,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     setCurrentUser(null);
     setIsAuthenticated(false);
-    setActiveShift(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem("pos_session_user");
     }
@@ -340,8 +321,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSelectedOutletSlug,
         login,
         logout,
-        activeShift,
-        refreshActiveShift,
         settings,
         toasts,
         showToast,

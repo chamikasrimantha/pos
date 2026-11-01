@@ -46,7 +46,6 @@ export function PosView() {
   const {
     activeShop,
     currentUser,
-    activeShift,
     setActiveView,
     showToast,
     openPrintModal,
@@ -75,14 +74,8 @@ export function PosView() {
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
-  // Unified barcode processor with shift check, stock validation, and sound feedback
+  // Unified barcode processor with stock validation and sound feedback
   const processBarcode = (rawCode: string) => {
-    if (!activeShift) {
-      showToast("Open a shift to start selling.", "error");
-      playScanErrorBeep();
-      return;
-    }
-
     const trimmed = rawCode.trim();
     if (!trimmed) return;
 
@@ -187,12 +180,6 @@ export function PosView() {
   };
 
   const addToCart = (variant: ProductVariant) => {
-    if (!activeShift) {
-      showToast("Open a shift to start selling.", "error");
-      playScanErrorBeep();
-      return;
-    }
-
     const onHand = stockMap[variant.id] || 0;
     const existing = cart.find((i) => i.variant.id === variant.id);
     const existingQty = existing ? existing.quantity : 0;
@@ -274,10 +261,6 @@ export function PosView() {
 
   // Open Checkout
   const handleOpenCheckout = () => {
-    if (!activeShift) {
-      showToast("Cannot checkout: Active cashier shift is required.", "error");
-      return;
-    }
     if (cart.length === 0) {
       showToast("Cart is empty", "error");
       return;
@@ -288,7 +271,7 @@ export function PosView() {
 
   // Finalize Sale
   const handleFinalizeSale = async () => {
-    if (!activeShift || !currentUser) return;
+    if (!currentUser) return;
     setIsSubmitting(true);
 
     try {
@@ -307,7 +290,6 @@ export function PosView() {
         shopId: activeShop.id,
         cashierId: currentUser.uid,
         cashierName: currentUser.displayName,
-        shiftId: activeShift.id,
         customerName: customerName.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
         idempotencyKey,
@@ -357,43 +339,6 @@ export function PosView() {
           minWidth: 0,
         }}
       >
-        {/* Shift closed notice — shown once here only */}
-        {!activeShift && (
-          <div
-            className="animate-fade-in"
-            style={{
-              margin: "16px 16px 0",
-              padding: "12px 16px",
-              background: "var(--primary-soft)",
-              border: "1px solid var(--primary-soft-line)",
-              borderRadius: "var(--radius-tile)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <AlertCircle size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: "15px", fontWeight: "600", color: "var(--primary-ink)" }}>
-                  Open a shift to start selling.
-                </div>
-                <div style={{ fontSize: "14px", color: "var(--ink-2)", marginTop: "2px" }}>
-                  Enter your starting cash to begin.
-                </div>
-              </div>
-            </div>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setActiveView("shifts")}
-              style={{ height: "44px", flexShrink: 0 }}
-            >
-              Open shift
-            </button>
-          </div>
-        )}
-
         {/* Scan + Search row */}
         <div style={{ display: "flex", gap: "12px", padding: "16px" }}>
           <form
@@ -418,7 +363,6 @@ export function PosView() {
               placeholder="Scan barcode or enter SKU"
               value={barcodeInput}
               onChange={(e) => setBarcodeInput(e.target.value)}
-              disabled={!activeShift}
               style={{
                 flex: 1,
                 background: "transparent",
@@ -433,7 +377,6 @@ export function PosView() {
               type="submit"
               className="btn btn-secondary btn-sm"
               style={{ flexShrink: 0, height: "32px" }}
-              disabled={!activeShift}
             >
               Scan
             </button>
@@ -460,7 +403,6 @@ export function PosView() {
               title="Scan Barcode with Camera"
               className="btn btn-secondary btn-sm"
               style={{ flexShrink: 0, height: "32px", padding: "0 8px", display: "flex", alignItems: "center", gap: "4px" }}
-              disabled={!activeShift}
             >
               <Camera size={14} />
               <span style={{ fontSize: "12px" }}>Cam</span>
@@ -584,8 +526,7 @@ export function PosView() {
                       <div className="text-price-tile">{formatCurrency(variant.sellingPrice)}</div>
                       <button
                         className="btn btn-primary btn-sm"
-                        disabled={isOut || !activeShift}
-                        title={!activeShift ? "Open a shift first" : undefined}
+                        disabled={isOut}
                         onClick={(e) => { e.stopPropagation(); if (!isOut) addToCart(variant); }}
                         style={{ height: "44px" }}
                       >
@@ -836,7 +777,7 @@ export function PosView() {
           <button
             className="btn btn-primary btn-lg"
             style={{ width: "100%", marginTop: "4px", justifyContent: "space-between" }}
-            disabled={!activeShift || cart.length === 0}
+            disabled={cart.length === 0}
             onClick={() => {
               setIsMobileCartOpen(false);
               setIsPaymentModalOpen(true);
@@ -918,7 +859,7 @@ export function PosView() {
               <div>
                 <h3 style={{ fontSize: "20px", fontWeight: "600", color: "var(--ink)", margin: 0 }}>Settle payment</h3>
                 <div style={{ fontSize: "13px", color: "var(--ink-3)", marginTop: "2px" }}>
-                  Shift #{activeShift?.shiftNumber} · {activeShop.name}
+                  {activeShop.name}
                 </div>
               </div>
               <button

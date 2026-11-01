@@ -21,6 +21,7 @@ import {
   Inventory,
   StockMovement,
   CashierShift,
+  DailyCashSummary,
   CashMovement,
   Sale,
   SaleItem,
@@ -59,7 +60,7 @@ import {
   SEED_SALES,
   SEED_SALE_ITEMS,
 } from "./seed-data";
-import { computeExpectedDrawerCash } from "./shift-math";
+import { computeDailyCashSummary } from "./daily-cash-math";
 import {
   getColomboDayRange,
   getColomboMonthRange,
@@ -361,191 +362,48 @@ export function getVariantCostPrice(variantId: string, role: string): number | n
 }
 
 // ==========================================
-// 4. CASHIER SHIFTS MANAGEMENT
+// 4. DAILY CASH SUMMARY & CASH MANAGEMENT
 // ==========================================
-export function getActiveShift(shopId: string, cashierId: string): CashierShift | null {
+export function getDailyCashSummary(params?: {
+  shopId?: string;
+  cashierId?: string;
+  cashierName?: string;
+  timestamp?: number;
+}): DailyCashSummary {
   const store = loadLocalStore();
-  return (
-    store.shifts.find(
-      (s) => s.shopId === shopId && s.cashierId === cashierId && s.status === "OPEN"
-    ) || null
-  );
-}
-
-export function getShiftHistory(shopId: string): CashierShift[] {
-  const store = loadLocalStore();
-  return store.shifts.filter((s) => s.shopId === shopId).sort((a, b) => b.openedAt - a.openedAt);
-}
-
-export async function openCashierShift(params: {
-  shopId: string;
-  cashierId: string;
-  cashierName: string;
-  openingFloat: number;
-}): Promise<CashierShift> {
-  const store = loadLocalStore();
-  const existing = store.shifts.find(
-    (s) => s.shopId === params.shopId && s.cashierId === params.cashierId && s.status === "OPEN"
-  );
-  if (existing) {
-    throw new Error(`You already have an active open shift (#${existing.shiftNumber}).`);
-  }
-
-  const shop = store.shops.find((s) => s.id === params.shopId);
-  const shiftPrefix = shop?.shiftPrefix || (params.shopId === "rightway" ? "RW-SFT" : "MG-SFT");
-  const shiftNumber = getNextSequentialNumber(shiftPrefix, `${params.shopId}_sft`);
-  const shiftId = `sft_${Date.now()}`;
-
-  const newShift: CashierShift = {
-    id: shiftId,
-    shiftNumber,
-    shopId: params.shopId,
-    cashierId: params.cashierId,
-    cashierNameCache: params.cashierName,
-    openedAt: Date.now(),
-    closedAt: null,
-    openingFloat: params.openingFloat,
-    cashSales: 0,
-    cardSales: 0,
-    transferSales: 0,
-    cashRefunds: 0,
-    repairCashIn: 0,
-    cashPayouts: 0,
-    cashPaidIn: 0,
-    expectedCash: params.openingFloat,
-    status: "OPEN",
-  };
-
-  store.shifts.push(newShift);
-  logAuditAction(store, {
-    userId: params.cashierId,
-    userEmailCache: params.cashierName,
-    action: "SHIFT_OPEN",
-    entityType: "cashierShifts",
-    entityId: shiftId,
-    shopId: params.shopId,
-    after: newShift,
-    reason: `Shift opened with float of Rs. ${params.openingFloat}`,
+  const summary = computeDailyCashSummary({
+    shopId: params?.shopId,
+    cashierId: params?.cashierId,
+    cashierName: params?.cashierName,
+    timestamp: params?.timestamp,
+    sales: store.sales,
+    returns: store.returns,
+    repairs: store.repairs,
   });
-  saveLocalStore(store);
 
-  try {
-    await setDoc(doc(db, "cashierShifts", shiftId), newShift);
-  } catch (e) {
-    console.warn("Firestore sync shift error:", e);
-  }
-
-  return newShift;
-}
-
-export async function closeCashierShift(params: {
-  shiftId: string;
-  actualCashCounted: number;
-  closingNotes?: string;
-  supervisorOverrideId?: string;
-}): Promise<CashierShift> {
-  const store = loadLocalStore();
-  const shift = store.shifts.find((s) => s.id === params.shiftId);
-  if (!shift) throw new Error("Shift not found");
-  if (shift.status === "CLOSED") throw new Error("Shift is already closed");
-
-  const expectedCash = computeExpectedDrawerCash(shift);
-  const variance = params.actualCashCounted - expectedCash;
-
-  shift.status = "CLOSED";
-  shift.closedAt = Date.now();
-  shift.expectedCash = expectedCash;
-  shift.actualCashCounted = params.actualCashCounted;
-  shift.variance = variance;
-  shift.closingNotes = params.closingNotes || null;
-  shift.supervisorOverrideId = params.supervisorOverrideId || null;
-
-  logAuditAction(store, {
-    userId: shift.cashierId,
-    userEmailCache: shift.cashierNameCache,
-    action: "SHIFT_CLOSE",
-    entityType: "cashierShifts",
-    entityId: shift.id,
-    shopId: shift.shopId,
-    after: shift,
-    reason: `Shift closed. Expected: Rs. ${expectedCash}, Counted: Rs. ${params.actualCashCounted}, Variance: Rs. ${variance}`,
-  });
-  saveLocalStore(store);
-
-  try {
-    await updateDoc(doc(db, "cashierShifts", shift.id), {
-      status: "CLOSED",
-      closedAt: shift.closedAt,
-      expectedCash,
-      actualCashCounted: params.actualCashCounted,
-      variance,
-      closingNotes: params.closingNotes || null,
-      supervisorOverrideId: params.supervisorOverrideId || null,
-    });
-  } catch (e) {
-    console.warn("Firestore sync shift close error:", e);
-  }
-
-  return shift;
-}
-
-export async function recordCashMovement(params: {
-  shiftId: string;
-  shopId: string;
-  type: "PAID_IN" | "PAID_OUT" | "SAFE_DROP";
-  amount: number;
-  reason: string;
-  authorizedBy: string;
-}): Promise<CashMovement> {
-  const store = loadLocalStore();
-  const shift = store.shifts.find((s) => s.id === params.shiftId && s.status === "OPEN");
-  if (!shift) throw new Error(ERROR_MESSAGES.SHIFT_REQUIRED);
-
-  const movementId = `cm_${Date.now()}`;
-  const movement: CashMovement = {
-    id: movementId,
-    shiftId: params.shiftId,
-    shopId: params.shopId,
-    type: params.type,
-    amount: params.amount,
-    reason: params.reason,
-    authorizedBy: params.authorizedBy,
-    createdAt: Date.now(),
-  };
-
-  if (params.type === "PAID_IN") {
-    shift.cashPaidIn = (shift.cashPaidIn || 0) + params.amount;
-  } else {
-    const currentExpected = computeExpectedDrawerCash(shift);
-    if (params.amount > currentExpected) {
-      throw new Error(
-        `Cannot remove Rs. ${params.amount}. Amount exceeds current expected drawer cash of Rs. ${currentExpected}.`
-      );
+  // If viewing across a branch or central (all branches) without cashier filter, compute per-cashier breakdowns
+  if (!params?.cashierId) {
+    const cashiers = store.users.filter((u) => u.role === "CASHIER");
+    const breakdowns: DailyCashSummary[] = [];
+    for (const c of cashiers) {
+      if (params?.shopId && params.shopId !== "ALL" && !c.allowedShopIds?.includes(params.shopId)) {
+        continue;
+      }
+      const cSummary = computeDailyCashSummary({
+        shopId: params?.shopId,
+        cashierId: c.uid,
+        cashierName: c.displayName,
+        timestamp: params?.timestamp,
+        sales: store.sales,
+        returns: store.returns,
+        repairs: store.repairs,
+      });
+      breakdowns.push(cSummary);
     }
-    shift.cashPayouts = (shift.cashPayouts || 0) + params.amount;
+    summary.cashierBreakdowns = breakdowns;
   }
 
-  shift.expectedCash = computeExpectedDrawerCash(shift);
-
-  store.cashMovements.push(movement);
-  logAuditAction(store, {
-    userId: params.authorizedBy,
-    userEmailCache: "Manager",
-    action: `CASH_${params.type}`,
-    entityType: "cashMovements",
-    entityId: movementId,
-    shopId: params.shopId,
-    after: movement,
-    reason: params.reason,
-  });
-
-  saveLocalStore(store);
-  return movement;
-}
-
-export function getCashMovementsForShift(shiftId: string): CashMovement[] {
-  const store = loadLocalStore();
-  return store.cashMovements.filter((m) => m.shiftId === shiftId);
+  return summary;
 }
 
 // ==========================================
@@ -555,7 +413,7 @@ export async function completeSale(params: {
   shopId: string;
   cashierId: string;
   cashierName: string;
-  shiftId: string;
+  shiftId?: string;
   customerName?: string;
   customerPhone?: string;
   items: {
@@ -591,13 +449,7 @@ export async function completeSale(params: {
     }
   }
 
-  // 2. Verify active shift
-  const shift = store.shifts.find((s) => s.id === params.shiftId && s.status === "OPEN");
-  if (!shift) {
-    throw new Error(ERROR_MESSAGES.SHIFT_REQUIRED);
-  }
-
-  // 3. Validate stock sufficiency for all cart items
+  // 2. Validate stock sufficiency for all cart items
   for (const item of params.items) {
     const invKey = `${params.shopId}_${item.variant.id}`;
     const currentOnHand = store.inventory[invKey]?.quantityOnHand || 0;
@@ -684,18 +536,6 @@ export async function completeSale(params: {
     store.movements.push(movement);
   }
 
-  // 6. Update Cashier Shift drawer accumulation
-  for (const pay of params.payments) {
-    if (pay.method === "CASH") {
-      shift.cashSales += pay.amount;
-    } else if (pay.method === "CARD") {
-      shift.cardSales += pay.amount;
-    } else if (pay.method === "BANK_TRANSFER") {
-      shift.transferSales += pay.amount;
-    }
-  }
-  shift.expectedCash = computeExpectedDrawerCash(shift);
-
   store.sales.push(createdSale);
   store.saleItems.push(...createdItems);
 
@@ -744,6 +584,12 @@ export interface InvoicesQueryResult {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+export function getSales(shopId?: string): Sale[] {
+  const store = loadLocalStore();
+  if (!shopId || shopId === "ALL") return store.sales;
+  return store.sales.filter((s) => s.shopId === shopId);
 }
 
 /**
@@ -895,7 +741,7 @@ export async function processCustomerReturn(params: {
   items: ReturnItem[];
   refundMethod: "CASH" | "ORIGINAL_CARD" | "STORE_CREDIT" | "EVEN_EXCHANGE";
   cashierId: string;
-  shiftId: string;
+  shiftId?: string;
   notes?: string;
   approvedBy?: string;
   exchangeReplacement?: {
@@ -905,11 +751,6 @@ export async function processCustomerReturn(params: {
   };
 }): Promise<CustomerReturn> {
   const store = loadLocalStore();
-
-  const shift = store.shifts.find((s) => s.id === params.shiftId && s.status === "OPEN");
-  if (!shift) {
-    throw new Error(ERROR_MESSAGES.SHIFT_REQUIRED);
-  }
 
   const retPrefix = params.shopId === "rightway" ? "RW-RET" : "MG-RET";
   const returnNumber = getNextSequentialNumber(retPrefix, `${params.shopId}_ret`);
@@ -1015,21 +856,13 @@ export async function processCustomerReturn(params: {
     const replacementTotal = rep.price * rep.quantity;
     if (replacementTotal > subtotalRefund) {
       // Customer pays the difference
-      const diff = replacementTotal - subtotalRefund;
-      shift.cashSales += diff;
       netRefund = 0;
     } else {
       // Refund remaining difference
       netRefund = subtotalRefund - replacementTotal;
-      if (params.refundMethod === "CASH" && netRefund > 0) {
-        shift.cashRefunds += netRefund;
-      }
     }
     exchangeSaleId = `exc_sale_${Date.now()}`;
-  } else if (params.refundMethod === "CASH") {
-    shift.cashRefunds += netRefund;
   }
-  shift.expectedCash = computeExpectedDrawerCash(shift);
 
   // Update original sale returnStatus
   const origSale = store.sales.find((s) => s.id === params.originalSale.id);
@@ -1060,7 +893,7 @@ export async function processCustomerReturn(params: {
   store.returns.push(returnRecord);
   logAuditAction(store, {
     userId: params.cashierId,
-    userEmailCache: shift.cashierNameCache,
+    userEmailCache: "Cashier",
     action: "RETURN_CREATE",
     entityType: "returns",
     entityId: returnId,
@@ -1091,7 +924,7 @@ export function getRepairOrders(shopId: string): ShoeRepairOrder[] {
 export async function createRepairOrder(params: {
   shopId: string;
   intakeCashierId: string;
-  intakeShiftId: string;
+  intakeShiftId?: string;
   customerName: string;
   customerPhone: string;
   customerAddress?: string;
@@ -1108,11 +941,6 @@ export async function createRepairOrder(params: {
   notes?: string;
 }): Promise<ShoeRepairOrder> {
   const store = loadLocalStore();
-
-  const shift = store.shifts.find((s) => s.id === params.intakeShiftId && s.status === "OPEN");
-  if (params.advancePaid > 0 && !shift) {
-    throw new Error(ERROR_MESSAGES.SHIFT_REQUIRED);
-  }
 
   const shop = store.shops.find((s) => s.id === params.shopId);
   const repPrefix = shop?.repairPrefix || (params.shopId === "rightway" ? "RW-REP" : "MG-REP");
@@ -1156,15 +984,10 @@ export async function createRepairOrder(params: {
     ],
   };
 
-  if (params.advancePaid > 0 && params.advancePaymentMethod === "CASH" && shift) {
-    shift.repairCashIn = (shift.repairCashIn || 0) + params.advancePaid;
-    shift.expectedCash = computeExpectedDrawerCash(shift);
-  }
-
   store.repairs.push(repair);
   logAuditAction(store, {
     userId: params.intakeCashierId,
-    userEmailCache: shift?.cashierNameCache || "Cashier",
+    userEmailCache: "Cashier",
     action: "REPAIR_CREATE",
     entityType: "repairOrders",
     entityId: repairId,
@@ -1239,17 +1062,12 @@ export async function deliverRepairOrder(params: {
   repairId: string;
   finalCost: number;
   deliveryCashierId: string;
-  deliveryShiftId: string;
+  deliveryShiftId?: string;
   deliveryPaymentMethod: "CASH" | "CARD" | "BANK_TRANSFER";
 }): Promise<ShoeRepairOrder> {
   const store = loadLocalStore();
   const repair = store.repairs.find((r) => r.id === params.repairId);
   if (!repair) throw new Error("Repair order not found");
-
-  const shift = store.shifts.find((s) => s.id === params.deliveryShiftId && s.status === "OPEN");
-  if (!shift) {
-    throw new Error(ERROR_MESSAGES.SHIFT_REQUIRED);
-  }
 
   const balanceToCollect = Math.max(0, params.finalCost - repair.advancePaid);
 
@@ -1269,14 +1087,9 @@ export async function deliverRepairOrder(params: {
     notes: `Delivered to customer. Collected Rs. ${balanceToCollect} via ${params.deliveryPaymentMethod}`,
   });
 
-  if (balanceToCollect > 0 && params.deliveryPaymentMethod === "CASH") {
-    shift.repairCashIn = (shift.repairCashIn || 0) + balanceToCollect;
-    shift.expectedCash = computeExpectedDrawerCash(shift);
-  }
-
   logAuditAction(store, {
     userId: params.deliveryCashierId,
-    userEmailCache: shift.cashierNameCache,
+    userEmailCache: "Cashier",
     action: "REPAIR_DELIVER",
     entityType: "repairOrders",
     entityId: repair.id,
@@ -2242,7 +2055,8 @@ export interface DailySalesData {
     bankTransfer: number;
   };
   repairIncome: number;
-  shifts: {
+  dailyCashSummary?: DailyCashSummary;
+  shifts?: {
     id: string;
     cashierName: string;
     cashierId: string;
@@ -2291,29 +2105,7 @@ export interface DayEndStatusData {
   firstInvoiceNumber: string | null;
   lastInvoiceNumber: string | null;
   missingInvoices: string[];
-  shifts: {
-    id: string;
-    cashierName: string;
-    cashierId: string;
-    status: string;
-    openedAt: number;
-    closedAt?: number;
-    openingFloat: number;
-    cashSales: number;
-    repairCashIn: number;
-    cashRefunds: number;
-    cashDrops: number;
-    expectedCash: number;
-    closingCountedCash?: number;
-    variance?: number;
-    isOpen: boolean;
-  }[];
-  totalExpectedDrawerCash: number;
-  totalActualCountedCash: number;
-  totalVariance: number;
-  allShiftsClosed: boolean;
-  shiftSalesSum: number;
-  salesReconciliationMismatch: boolean;
+  dailyCashSummary?: DailyCashSummary;
   sales: Sale[];
 }
 
@@ -2371,34 +2163,12 @@ export function getDailySalesData(
     itemsBySaleId[sale.id] = store.saleItems.filter((it) => it.saleId === sale.id);
   });
 
-  // Shifts of the day
-  let dayShifts = store.shifts.filter((sh) => {
-    const matchesShop = shopId === "ALL" || sh.shopId === shopId;
-    const matchesTime =
-      sh.openedAt <= endOfDay && (!sh.closedAt || sh.closedAt >= startOfDay);
-    return matchesShop && matchesTime;
+  // Daily Cash Summary
+  const dailyCashSummary = getDailyCashSummary({
+    shopId,
+    cashierId: requestingUser && requestingUser.role !== "SUPER_ADMIN" ? requestingUser.uid : undefined,
+    timestamp: dayTimestamp,
   });
-
-  if (requestingUser && requestingUser.role !== "SUPER_ADMIN") {
-    dayShifts = dayShifts.filter((sh) => sh.cashierId === requestingUser.uid);
-  }
-
-  const shiftSummaries = dayShifts.map((sh) => ({
-    id: sh.id,
-    cashierName: sh.cashierNameCache || "Cashier",
-    cashierId: sh.cashierId,
-    openedAt: sh.openedAt,
-    closedAt: sh.closedAt || undefined,
-    status: sh.status,
-    openingFloat: sh.openingFloat,
-    cashSales: sh.cashSales || 0,
-    cashRefunds: sh.cashRefunds || 0,
-    repairCashIn: sh.repairCashIn || 0,
-    cashDrops: sh.cashPayouts || 0,
-    expectedCash: computeExpectedDrawerCash(sh),
-    closingCountedCash: sh.actualCashCounted,
-    variance: sh.variance,
-  }));
 
   // Repair income for the day
   let repairIncome = 0;
@@ -2429,7 +2199,8 @@ export function getDailySalesData(
     invoiceCount: daySales.filter((s) => s.status === "COMPLETED").length,
     payments,
     repairIncome,
-    shifts: shiftSummaries,
+    dailyCashSummary,
+    shifts: [],
     sales: daySales,
     itemsBySaleId,
   };
@@ -2595,55 +2366,8 @@ export function getDayEndStatusData(
     }
   }
 
-  // Shift reconciliation
-  const dayShifts = store.shifts.filter((sh) => {
-    const matchesShop = shopId === "ALL" || sh.shopId === shopId;
-    const matchesTime =
-      sh.openedAt <= endOfDay && (!sh.closedAt || sh.closedAt >= startOfDay);
-    return matchesShop && matchesTime;
-  });
-
-  let totalExpectedDrawerCash = 0;
-  let totalActualCountedCash = 0;
-  let totalVariance = 0;
-  let allShiftsClosed = dayShifts.length > 0;
-  let shiftSalesSum = 0;
-
-  const shiftSummaries = dayShifts.map((sh) => {
-    const expected = computeExpectedDrawerCash(sh);
-    const isOpen = sh.status === "OPEN";
-    if (isOpen) allShiftsClosed = false;
-
-    totalExpectedDrawerCash += expected;
-    if (sh.actualCashCounted !== undefined) {
-      totalActualCountedCash += sh.actualCashCounted;
-    }
-    if (sh.variance !== undefined) {
-      totalVariance += sh.variance;
-    }
-    shiftSalesSum += sh.cashSales || 0;
-
-    return {
-      id: sh.id,
-      cashierName: sh.cashierNameCache || "Cashier",
-      cashierId: sh.cashierId,
-      status: sh.status,
-      openedAt: sh.openedAt,
-      closedAt: sh.closedAt || undefined,
-      openingFloat: sh.openingFloat,
-      cashSales: sh.cashSales || 0,
-      repairCashIn: sh.repairCashIn || 0,
-      cashRefunds: sh.cashRefunds || 0,
-      cashDrops: sh.cashPayouts || 0,
-      expectedCash: expected,
-      closingCountedCash: sh.actualCashCounted,
-      variance: sh.variance,
-      isOpen,
-    };
-  });
-
-  const salesReconciliationMismatch =
-    Math.abs(shiftSalesSum - payments.cash) > 0.01;
+  // Daily Cash Summary
+  const dailyCashSummary = getDailyCashSummary({ shopId, timestamp: dayTimestamp });
 
   return {
     dateKey,
@@ -2661,13 +2385,7 @@ export function getDayEndStatusData(
     firstInvoiceNumber,
     lastInvoiceNumber,
     missingInvoices,
-    shifts: shiftSummaries,
-    totalExpectedDrawerCash,
-    totalActualCountedCash,
-    totalVariance,
-    allShiftsClosed,
-    shiftSalesSum,
-    salesReconciliationMismatch,
+    dailyCashSummary,
     sales: sortedSales,
   };
 }

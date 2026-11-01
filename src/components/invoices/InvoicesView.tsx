@@ -6,9 +6,10 @@ import { useApp } from "@/context/AppContext";
 import {
   getInvoicesForUser,
   logInvoiceReprint,
+  getDailyCashSummary,
   InvoiceFilters,
 } from "@/lib/firestore-service";
-import { formatCurrency, formatDate, renderSaleReceiptHTML } from "@/lib/receipt-generator";
+import { formatCurrency, formatDate, renderSaleReceiptHTML, renderDailyCashSummaryHTML } from "@/lib/receipt-generator";
 import { getColomboDayRange, formatColomboDateTime } from "@/lib/date-utils";
 import { Sale, SaleItem } from "@/types";
 import {
@@ -31,6 +32,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  Coins,
 } from "lucide-react";
 
 export function InvoicesView({
@@ -58,8 +60,9 @@ export function InvoicesView({
   const [cashierFilter, setCashierFilter] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Selected invoice for detail drawer
+  // Selected invoice for detail panel
   const [selectedInvoice, setSelectedInvoice] = useState<Sale | null>(null);
+  const [isDaySummaryModalOpen, setIsDaySummaryModalOpen] = useState(false);
 
   const isSuperAdmin = currentUser?.role === "SUPER_ADMIN";
 
@@ -121,6 +124,14 @@ export function InvoicesView({
 
   const { invoices, itemsBySaleId, totalCount, totalPages } = queryResult;
 
+  const myDaySummary = useMemo(() => {
+    return getDailyCashSummary({
+      shopId: isSuperAdmin ? undefined : activeShop.id,
+      cashierId: isSuperAdmin ? undefined : currentUser?.uid,
+      cashierName: isSuperAdmin ? undefined : currentUser?.displayName,
+    });
+  }, [activeShop.id, isSuperAdmin, currentUser, dataVersion]);
+
   // Handle Reprint
   const handleReprint = (sale: Sale) => {
     if (!currentUser) return;
@@ -180,27 +191,38 @@ export function InvoicesView({
           </div>
         </div>
 
-        {/* Quick Search */}
-        <div style={{ display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--line-strong)", borderRadius: "9999px", padding: "0 14px", height: "42px", width: "340px", maxWidth: "100%", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
-          <Search size={16} color="var(--ink-3)" style={{ marginRight: "8px", flexShrink: 0 }} />
-          <input
-            type="text"
-            placeholder="Search invoice#, customer, phone, total…"
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-            style={{ border: "none", outline: "none", background: "transparent", fontSize: "13px", color: "var(--ink)", width: "100%" }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", padding: "2px" }}
-            >
-              <X size={14} />
-            </button>
-          )}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          {/* Quick Search */}
+          <div style={{ display: "flex", alignItems: "center", background: "var(--surface)", border: "1px solid var(--line-strong)", borderRadius: "9999px", padding: "0 14px", height: "42px", width: "320px", maxWidth: "100%", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+            <Search size={16} color="var(--ink-3)" style={{ marginRight: "8px", flexShrink: 0 }} />
+            <input
+              type="text"
+              placeholder="Search invoice#, customer, phone, total…"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{ border: "none", outline: "none", background: "transparent", fontSize: "13px", color: "var(--ink)", width: "100%" }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", padding: "2px" }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setIsDaySummaryModalOpen(true)}
+            style={{ height: "42px", display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}
+            title="View today's cash sales, refunds and net cash movement"
+          >
+            <Coins size={16} /> My Day Summary
+          </button>
         </div>
       </div>
 
@@ -618,7 +640,7 @@ export function InvoicesView({
         )}
       </div>
 
-      {/* Invoice Detail Drawer Modal */}
+      {/* Invoice Detail Panel Modal */}
       {selectedInvoice && (
         <div
           style={{
@@ -645,7 +667,7 @@ export function InvoicesView({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Drawer Header */}
+            {/* Panel Header */}
             <div
               style={{
                 padding: "18px 20px",
@@ -671,7 +693,7 @@ export function InvoicesView({
               </button>
             </div>
 
-            {/* Drawer Content */}
+            {/* Panel Content */}
             <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px", flex: 1 }}>
               {/* Status Banner */}
               <div
@@ -773,7 +795,7 @@ export function InvoicesView({
               </div>
             </div>
 
-            {/* Drawer Actions */}
+            {/* Panel Actions */}
             <div
               style={{
                 padding: "16px 20px",
@@ -801,6 +823,165 @@ export function InvoicesView({
                   <RotateCcw size={16} /> Start Return
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cashier "My Day Summary" Modal (CR-02 Section 3.2 / S4) */}
+      {isDaySummaryModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(16, 24, 40, 0.5)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+            padding: "16px",
+          }}
+          onClick={() => setIsDaySummaryModalOpen(false)}
+        >
+          <div
+            className="animate-fade-in"
+            style={{
+              background: "var(--surface)",
+              borderRadius: "var(--radius-modal)",
+              maxWidth: "480px",
+              width: "100%",
+              boxShadow: "var(--shadow-floating)",
+              border: "1px solid var(--line)",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: "20px",
+                borderBottom: "1px solid var(--line)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Coins size={22} style={{ color: "var(--primary)" }} />
+                  <h3 style={{ fontSize: "18px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
+                    My Day Summary
+                  </h3>
+                </div>
+                <div style={{ fontSize: "13px", color: "var(--ink-2)", marginTop: "4px" }}>
+                  {currentUser?.displayName} &bull; {activeShop.name} &bull; Today
+                </div>
+              </div>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setIsDaySummaryModalOpen(false)}
+                style={{ padding: "4px", height: "32px", width: "32px" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
+              {/* Net Cash Movement Highlight */}
+              <div
+                style={{
+                  padding: "16px",
+                  background: (myDaySummary.netCashMovement >= 0) ? "var(--success-soft, #f0fdf4)" : "var(--danger-soft, #fef2f2)",
+                  border: `1px solid ${myDaySummary.netCashMovement >= 0 ? "var(--success)" : "var(--danger)"}`,
+                  borderRadius: "10px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", textTransform: "uppercase", color: "var(--ink-2)" }}>
+                    Net Cash Movement
+                  </div>
+                  <div style={{ fontSize: "12px", color: "var(--ink-3)", marginTop: "2px" }}>
+                    Total Inflow minus Outflow
+                  </div>
+                </div>
+                <div
+                  style={{
+                    fontSize: "24px",
+                    fontWeight: "900",
+                    fontVariantNumeric: "tabular-nums",
+                    color: myDaySummary.netCashMovement >= 0 ? "var(--success)" : "var(--danger)",
+                  }}
+                >
+                  {formatCurrency(myDaySummary.netCashMovement)}
+                </div>
+              </div>
+
+              {/* Inflow & Outflow Details */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "var(--ink-2)" }}>Gross Cash Sales ({myDaySummary.salesCount} sales)</span>
+                  <span style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
+                    +{formatCurrency(myDaySummary.cashSales)}
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "var(--ink-2)" }}>Shoe Repair Cash Collected ({myDaySummary.repairsCount} repairs)</span>
+                  <span style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
+                    +{formatCurrency(myDaySummary.repairCashCollected)}
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "var(--ink-2)" }}>Customer Cash Refunds ({myDaySummary.refundsCount} returns)</span>
+                  <span style={{ fontWeight: "700", color: "var(--danger)", fontVariantNumeric: "tabular-nums" }}>
+                    -{formatCurrency(myDaySummary.cashRefunds)}
+                  </span>
+                </div>
+                {myDaySummary.cashReceivedOnAccount > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "var(--ink-2)" }}>Customer Payments on Account</span>
+                    <span style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
+                      +{formatCurrency(myDaySummary.cashReceivedOnAccount)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer / Print Actions */}
+            <div
+              style={{
+                padding: "16px 20px",
+                borderTop: "1px solid var(--line)",
+                background: "var(--surface-muted, #f9fafb)",
+                display: "flex",
+                gap: "10px",
+              }}
+            >
+              <button
+                className="btn btn-secondary"
+                style={{ flex: 1, height: "44px", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                onClick={() => {
+                  const html = renderDailyCashSummaryHTML(myDaySummary, activeShop.name, "THERMAL_80MM");
+                  openPrintModal("My Day Summary - 80mm", html);
+                }}
+              >
+                <Printer size={16} /> Print 80mm Slip
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1, height: "44px", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                onClick={() => {
+                  const html = renderDailyCashSummaryHTML(myDaySummary, activeShop.name, "A4");
+                  openPrintModal("My Day Summary - A4", html);
+                }}
+              >
+                <FileText size={16} /> Print A4 Sheet
+              </button>
             </div>
           </div>
         </div>

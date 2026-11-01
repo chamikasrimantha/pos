@@ -76,14 +76,14 @@ describe("Daily Sales & Day-End Status", () => {
     }).toThrow();
   });
 
-  it("Test C1: getDayEndStatusData calculates invoice counts, status breakdown, and shift reconciliation for Super Admin", () => {
+  it("Test C1: getDayEndStatusData calculates invoice counts, status breakdown, and daily cash reconciliation for Super Admin", () => {
     const testTimestamp = new Date("2026-10-27T10:00:00+05:30").getTime();
     const data = getDayEndStatusData("ALL", testTimestamp, superAdmin);
 
     expect(data.totalInvoices).toBeGreaterThanOrEqual(0);
     expect(data.completedInvoices + data.partiallyReturnedInvoices + data.fullyReturnedInvoices + data.cancelledInvoices)
       .toBe(data.totalInvoices);
-    expect(data.shifts).toBeDefined();
-    expect(typeof data.totalExpectedDrawerCash).toBe("number");
+    expect(data.dailyCashSummary).toBeDefined();
+    expect(typeof data.dailyCashSummary?.netCashMovement).toBe("number");
   });
 });

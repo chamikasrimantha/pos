@@ -35,7 +35,6 @@ export function RepairDesk() {
   const {
     activeShop,
     currentUser,
-    activeShift,
     openPrintModal,
     showToast,
     refreshData,
@@ -98,8 +97,8 @@ export function RepairDesk() {
   // Submit Intake
   const handleCreateIntake = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeShift || !currentUser) {
-      showToast("Cannot accept repair: Active cashier shift is required.", "error");
+    if (!currentUser) {
+      showToast("Cannot accept repair: User session required.", "error");
       return;
     }
 
@@ -113,7 +112,6 @@ export function RepairDesk() {
       const order = await createRepairOrder({
         shopId: activeShop.id,
         intakeCashierId: currentUser.uid,
-        intakeShiftId: activeShift.id,
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         customerAddress: customerAddress.trim() || undefined,
@@ -164,7 +162,7 @@ export function RepairDesk() {
   // Handle Delivery Finalization
   const handleDeliverOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRepairForDelivery || !activeShift || !currentUser) return;
+    if (!selectedRepairForDelivery || !currentUser) return;
 
     const finalVal = parseFloat(finalDeliveryCost) || selectedRepairForDelivery.estimatedCost;
 
@@ -174,7 +172,6 @@ export function RepairDesk() {
         repairId: selectedRepairForDelivery.id,
         finalCost: finalVal,
         deliveryCashierId: currentUser.uid,
-        deliveryShiftId: activeShift.id,
         deliveryPaymentMethod: deliveryMethod,
       });
 
@@ -593,7 +590,7 @@ export function RepairDesk() {
                     value={advanceMethod}
                     onChange={(e) => setAdvanceMethod(e.target.value as any)}
                   >
-                    <option value="CASH">Cash (Shift drawer)</option>
+                    <option value="CASH">Cash</option>
                     <option value="CARD">Card payment</option>
                     <option value="BANK_TRANSFER">Bank transfer</option>
                   </select>
@@ -733,7 +730,7 @@ export function RepairDesk() {
                   }}
                   onClick={() => setDeliveryMethod("CASH")}
                 >
-                  <Banknote size={16} /> Cash (Shift drawer)
+                  <Banknote size={16} /> Cash
                 </button>
                 <button
                   type="button"

@@ -678,7 +678,7 @@ html, body {
   border-color: var(--ink-3);
 }
 
-/* Below 1024px: cart panel becomes a full drawer and floating pill is shown */
+/* Below 1024px: cart panel becomes a full sheet modal and floating pill is shown */
 @media (max-width: 1023px) {
   .pos-cart-panel {
     display: none;

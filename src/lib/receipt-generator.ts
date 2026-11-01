@@ -3,14 +3,13 @@
 import {
   Sale,
   SaleItem,
-  CashierShift,
+  DailyCashSummary,
   ShoeRepairOrder,
   StockTransfer,
   Shop,
   ProductVariant,
 } from "@/types";
 import { generateBarcodeSVG } from "./barcode-svg";
-import { computeExpectedDrawerCash } from "./shift-math";
 
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-LK", {
@@ -108,7 +107,7 @@ export function renderSaleReceiptHTML(
         <div style="display: flex; justify-content: space-between;">
           <span>Date: ${formatDate(sale.createdAt)}</span>
         </div>
-        <div>Cashier: ${sale.cashierNameCache} (Shift #${sale.shiftId.slice(-6)})</div>
+        <div>Cashier: ${sale.cashierNameCache}</div>
         ${sale.customerName ? `<div>Customer: ${sale.customerName} (${sale.customerPhone || "-"})</div>` : ""}
       </div>
 
@@ -173,88 +172,197 @@ export function renderSaleReceiptHTML(
   `;
 }
 
-// ── 2. CASHIER SHIFT Z-REPORT (Reconciliation Slip) ─────────────────────────
-export function renderZReportHTML(shift: CashierShift, shop: Shop): string {
-  const isBalanced = (shift.variance || 0) === 0;
+// ── 2. DAILY CASH SUMMARY SLIP & REPORT (80mm Thermal & A4 Formats) ────────
+export function renderDailyCashSummaryHTML(
+  summary: DailyCashSummary,
+  shopName: string,
+  mode: "THERMAL_80MM" | "A4" = "THERMAL_80MM"
+): string {
+  if (mode === "A4") {
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 210mm; margin: 0 auto; padding: 15mm; color: #111; background: #fff;">
+        <div style="border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end;">
+          <div>
+            <h2 style="margin: 0 0 4px; font-size: 20px; text-transform: uppercase; letter-spacing: 0.5px;">APEX POS - DAILY CASH SUMMARY</h2>
+            <div style="font-size: 13px; font-weight: bold;">OUTLET: ${shopName.toUpperCase()} &nbsp;|&nbsp; DATE: ${summary.periodLabel || summary.dateKey}</div>
+            <div style="font-size: 11px; color: #555; margin-top: 2px;">
+              ${summary.cashierName ? `Cashier: <strong>${summary.cashierName}</strong> &nbsp;|&nbsp; ` : ""}Printed at: ${formatDate(Date.now())}
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 11px; color: #555;">NET CASH MOVEMENT</div>
+            <div style="font-size: 20px; font-weight: 900; color: ${summary.netCashMovement >= 0 ? '#166534' : '#b91c1c'}; font-variant-numeric: tabular-nums;">
+              ${formatCurrency(summary.netCashMovement)}
+            </div>
+          </div>
+        </div>
+
+        <!-- Inflow & Outflow Cards -->
+        <div style="display: flex; gap: 16px; margin-bottom: 20px;">
+          <!-- Cash Inflow -->
+          <div style="flex: 1; border: 1px solid #166534; border-radius: 6px; overflow: hidden;">
+            <div style="background: #f0fdf4; padding: 8px 12px; font-size: 12px; font-weight: bold; color: #166534; border-bottom: 1px solid #166534; display: flex; justify-content: space-between;">
+              <span>TOTAL CASH INFLOW</span>
+              <span>+${formatCurrency(summary.totalCashIn)}</span>
+            </div>
+            <div style="padding: 12px; font-size: 13px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span>Gross Cash Sales (${summary.salesCount} sales)</span>
+                <strong style="font-variant-numeric: tabular-nums;">${formatCurrency(summary.cashSales)}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span>Repair Cash Collected (${summary.repairsCount} jobs)</span>
+                <strong style="font-variant-numeric: tabular-nums;">${formatCurrency(summary.repairCashCollected)}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span>Customer Payments on Account</span>
+                <strong style="font-variant-numeric: tabular-nums;">${formatCurrency(summary.cashReceivedOnAccount || 0)}</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cash Outflow -->
+          <div style="flex: 1; border: 1px solid #b91c1c; border-radius: 6px; overflow: hidden;">
+            <div style="background: #fef2f2; padding: 8px 12px; font-size: 12px; font-weight: bold; color: #b91c1c; border-bottom: 1px solid #b91c1c; display: flex; justify-content: space-between;">
+              <span>TOTAL CASH OUTFLOW</span>
+              <span>-${formatCurrency(summary.totalCashOut)}</span>
+            </div>
+            <div style="padding: 12px; font-size: 13px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span>Customer Cash Refunds (${summary.refundsCount} returns)</span>
+                <strong style="font-variant-numeric: tabular-nums; color: #b91c1c;">-${formatCurrency(summary.cashRefunds)}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span>Cash Paid for Purchases (${summary.purchasesCount || 0} bills)</span>
+                <strong style="font-variant-numeric: tabular-nums; color: #b91c1c;">-${formatCurrency(summary.cashPaidForPurchases || 0)}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span>Cash Advances Given</span>
+                <strong style="font-variant-numeric: tabular-nums; color: #b91c1c;">-${formatCurrency(summary.cashAdvancesGiven || 0)}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        ${summary.cashierBreakdowns && summary.cashierBreakdowns.length > 0 ? `
+          <div style="margin-bottom: 24px;">
+            <h4 style="margin: 0 0 8px; font-size: 12px; text-transform: uppercase;">Cashier Breakdown</h4>
+            <table style="width: 100%; border-collapse: collapse; border: 1px solid #ccc; font-size: 12px;">
+              <thead>
+                <tr style="background: #f9fafb; border-bottom: 1px solid #ccc; font-size: 10px; text-transform: uppercase;">
+                  <th style="padding: 8px; text-align: left;">Cashier</th>
+                  <th style="padding: 8px; text-align: right;">Cash Sales</th>
+                  <th style="padding: 8px; text-align: right;">Repair Cash</th>
+                  <th style="padding: 8px; text-align: right;">Cash Refunds</th>
+                  <th style="padding: 8px; text-align: right;">Net Movement</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${summary.cashierBreakdowns.map((cb) => `
+                  <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px; font-weight: bold;">${cb.cashierName || cb.cashierId || "Cashier"}</td>
+                    <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(cb.cashSales)}</td>
+                    <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(cb.repairCashCollected)}</td>
+                    <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums; color: ${cb.cashRefunds > 0 ? '#b91c1c' : 'inherit'};">-${formatCurrency(cb.cashRefunds)}</td>
+                    <td style="padding: 8px; text-align: right; font-weight: bold; font-variant-numeric: tabular-nums; color: ${cb.netCashMovement >= 0 ? '#166534' : '#b91c1c'};">${formatCurrency(cb.netCashMovement)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : ""}
+
+        <!-- Signatures -->
+        <div style="display: flex; justify-content: space-between; margin-top: 40px; padding-top: 14px; border-top: 1px solid #ddd; font-size: 11px;">
+          <div style="text-align: center; width: 200px;">
+            <div style="border-bottom: 1px solid #000; height: 35px;"></div>
+            <div style="margin-top: 4px; font-weight: bold;">Cashier Signature</div>
+          </div>
+          <div style="text-align: center; width: 200px;">
+            <div style="border-bottom: 1px solid #000; height: 35px;"></div>
+            <div style="margin-top: 4px; font-weight: bold;">Authorized Manager</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 80mm Thermal Slip format
   return `
     <div style="font-family: 'Courier New', Courier, monospace; width: 280px; margin: 0 auto; padding: 14px 8px; color: #000; line-height: 1.35; background: #fff;">
       <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px;">
-        <h2 style="margin: 0; font-size: 17px; font-weight: 900;">Z-REPORT — SHIFT RECONCILIATION</h2>
-        <div style="font-size: 13px; font-weight: bold; margin-top: 3px;">${shop.name}</div>
-        <div style="font-size: 11px;">Shift No: ${shift.shiftNumber}</div>
+        <h2 style="margin: 0; font-size: 16px; font-weight: 900;">DAILY CASH SUMMARY</h2>
+        <div style="font-size: 13px; font-weight: bold; margin-top: 3px;">${shopName}</div>
+        <div style="font-size: 11px; margin-top: 2px;">Date: ${summary.periodLabel || summary.dateKey}</div>
       </div>
 
       <div style="font-size: 12px; margin-bottom: 8px;">
-        <div><strong>Cashier:</strong> ${shift.cashierNameCache}</div>
-        <div><strong>Opened:</strong> ${formatDate(shift.openedAt)}</div>
-        <div><strong>Closed:</strong> ${shift.closedAt ? formatDate(shift.closedAt) : "ACTIVE (Open)"}</div>
-        <div><strong>Status:</strong> ${shift.status}</div>
+        ${summary.cashierName ? `<div><strong>Cashier:</strong> ${summary.cashierName}</div>` : ""}
+        <div><strong>Generated:</strong> ${formatDate(Date.now())}</div>
       </div>
 
       <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 8px 0; font-size: 12px;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-          <span>Opening float:</span>
-          <span style="font-variant-numeric: tabular-nums;">${formatCurrency(shift.openingFloat)}</span>
+        <div style="font-weight: bold; margin-bottom: 4px; font-size: 11px;">CASH INFLOW:</div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+          <span>Cash Sales (${summary.salesCount}):</span>
+          <span style="font-variant-numeric: tabular-nums;">+${formatCurrency(summary.cashSales)}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-          <span>Cash sales:</span>
-          <span style="font-variant-numeric: tabular-nums;">${formatCurrency(shift.cashSales)}</span>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+          <span>Repair Cash (${summary.repairsCount}):</span>
+          <span style="font-variant-numeric: tabular-nums;">+${formatCurrency(summary.repairCashCollected)}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-          <span>Repair cash collected:</span>
-          <span style="font-variant-numeric: tabular-nums;">${formatCurrency(shift.repairCashIn || 0)}</span>
+        ${summary.cashReceivedOnAccount ? `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+          <span>Account Payments:</span>
+          <span style="font-variant-numeric: tabular-nums;">+${formatCurrency(summary.cashReceivedOnAccount)}</span>
+        </div>` : ""}
+        <div style="display: flex; justify-content: space-between; font-weight: bold; border-top: 1px dotted #ccc; padding-top: 2px; margin-top: 2px;">
+          <span>Total Cash In:</span>
+          <span style="font-variant-numeric: tabular-nums;">+${formatCurrency(summary.totalCashIn)}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-          <span>Cash refunds:</span>
-          <span style="font-variant-numeric: tabular-nums;">-${formatCurrency(shift.cashRefunds || 0)}</span>
+
+        <div style="font-weight: bold; margin-top: 8px; margin-bottom: 4px; font-size: 11px;">CASH OUTFLOW:</div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+          <span>Cash Refunds (${summary.refundsCount}):</span>
+          <span style="font-variant-numeric: tabular-nums;">-${formatCurrency(summary.cashRefunds)}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-          <span>Cash removed from the drawer:</span>
-          <span style="font-variant-numeric: tabular-nums;">-${formatCurrency(shift.cashPayouts || 0)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; font-weight: 900; font-size: 13px; border-top: 1px solid #000; padding-top: 4px; margin-top: 4px;">
-          <span>Expected drawer cash:</span>
-          <span style="font-variant-numeric: tabular-nums;">${formatCurrency(computeExpectedDrawerCash(shift))}</span>
+        ${summary.cashPaidForPurchases ? `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+          <span>Purchases Paid:</span>
+          <span style="font-variant-numeric: tabular-nums;">-${formatCurrency(summary.cashPaidForPurchases)}</span>
+        </div>` : ""}
+        ${summary.cashAdvancesGiven ? `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+          <span>Advances Given:</span>
+          <span style="font-variant-numeric: tabular-nums;">-${formatCurrency(summary.cashAdvancesGiven)}</span>
+        </div>` : ""}
+        <div style="display: flex; justify-content: space-between; font-weight: bold; border-top: 1px dotted #ccc; padding-top: 2px; margin-top: 2px;">
+          <span>Total Cash Out:</span>
+          <span style="font-variant-numeric: tabular-nums;">-${formatCurrency(summary.totalCashOut)}</span>
         </div>
       </div>
 
-      <div style="margin: 8px 0; border-bottom: 1px dashed #000; padding-bottom: 8px; font-size: 12px;">
-        <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 13px;">
-          <span>Counted cash:</span>
-          <span style="font-variant-numeric: tabular-nums;">${shift.actualCashCounted !== undefined ? formatCurrency(shift.actualCashCounted) : "Pending"}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; font-weight: 900; font-size: 13px; margin-top: 4px; color: ${
-          isBalanced ? "#15803d" : "#b91c1c"
-        };">
-          <span>Variance:</span>
-          <span style="font-variant-numeric: tabular-nums;">${shift.variance !== undefined ? (shift.variance > 0 ? `+${formatCurrency(shift.variance)}` : formatCurrency(shift.variance)) : "-"}</span>
-        </div>
-        ${
-          shift.closingNotes
-            ? `<div style="font-size: 11px; margin-top: 6px; font-style: italic;">
-                <strong>Closing Notes:</strong> ${shift.closingNotes}
-              </div>`
-            : ""
-        }
-      </div>
-
-      <div style="border-bottom: 1px dashed #000; padding-bottom: 8px; font-size: 12px;">
-        <div style="font-weight: bold; margin-bottom: 4px;">Non-Cash Settlements:</div>
-        <div style="display: flex; justify-content: space-between;">
-          <span>Card Payments:</span>
-          <span style="font-variant-numeric: tabular-nums;">${formatCurrency(shift.cardSales)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between;">
-          <span>Bank Transfers:</span>
-          <span style="font-variant-numeric: tabular-nums;">${formatCurrency(shift.transferSales)}</span>
+      <div style="margin: 10px 0; border-bottom: 2px solid #000; padding-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 900;">
+          <span>NET CASH MOVEMENT:</span>
+          <span style="font-variant-numeric: tabular-nums;">${formatCurrency(summary.netCashMovement)}</span>
         </div>
       </div>
 
-      <div style="margin-top: 28px; font-size: 11px;">
-        <div style="display: flex; justify-content: space-between;">
-          <div>____________________<br/>Cashier Signature</div>
-          <div>____________________<br/>Supervisor Verification</div>
+      ${summary.cashierBreakdowns && summary.cashierBreakdowns.length > 0 ? `
+        <div style="font-size: 11px; margin-bottom: 10px;">
+          <div style="font-weight: bold; margin-bottom: 4px; text-transform: uppercase;">Cashier Breakdown:</div>
+          ${summary.cashierBreakdowns.map((cb) => `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span>${cb.cashierName || "Cashier"}:</span>
+              <span style="font-variant-numeric: tabular-nums; font-weight: bold;">${formatCurrency(cb.netCashMovement)}</span>
+            </div>
+          `).join("")}
         </div>
+      ` : ""}
+
+      <div style="text-align: center; font-size: 10px; color: #555; margin-top: 12px; border-top: 1px dashed #000; padding-top: 8px;">
+        * * * Official Daily Cash Record * * *
       </div>
     </div>
   `;
@@ -616,25 +724,6 @@ export function renderDailySalesReportHTML(
   shopName: string,
   generatedBy: string
 ): string {
-  const shiftsRows = (report.shifts || [])
-    .map(
-      (sh: any) => `
-      <tr style="border-bottom: 1px solid #ddd; font-size: 11px;">
-        <td style="padding: 6px 4px;"><strong>${sh.cashierName}</strong></td>
-        <td style="padding: 6px 4px; text-align: center;">${sh.status}</td>
-        <td style="padding: 6px 4px; text-align: right;">${formatCurrency(sh.openingFloat)}</td>
-        <td style="padding: 6px 4px; text-align: right;">${formatCurrency(sh.cashSales)}</td>
-        <td style="padding: 6px 4px; text-align: right;">${formatCurrency(sh.cashDrops)}</td>
-        <td style="padding: 6px 4px; text-align: right; font-weight: bold;">${formatCurrency(sh.expectedCash)}</td>
-        <td style="padding: 6px 4px; text-align: right;">${sh.closingCountedCash !== undefined ? formatCurrency(sh.closingCountedCash) : "Open"}</td>
-        <td style="padding: 6px 4px; text-align: right; font-weight: bold; color: ${(sh.variance || 0) < 0 ? '#b91c1c' : '#047857'};">
-          ${sh.variance !== undefined ? formatCurrency(sh.variance) : "-"}
-        </td>
-      </tr>
-    `
-    )
-    .join("");
-
   const salesRows = (report.sales || [])
     .map(
       (s: any) => `
@@ -705,26 +794,43 @@ export function renderDailySalesReportHTML(
         </div>
       </div>
 
-      <!-- Cashier Shifts & Drawer Reconciliation -->
-      <div style="margin-bottom: 18px;">
-        <h4 style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase;">Cashier Shifts & Drawer Reconciliation</h4>
-        <table style="width: 100%; border-collapse: collapse; border: 1px solid #ccc;">
-          <thead>
-            <tr style="background: #f9fafb; border-bottom: 1px solid #ccc; font-size: 10px; text-transform: uppercase;">
-              <th style="padding: 6px 4px; text-align: left;">Cashier</th>
-              <th style="padding: 6px 4px; text-align: center;">Shift Status</th>
-              <th style="padding: 6px 4px; text-align: right;">Opening Float</th>
-              <th style="padding: 6px 4px; text-align: right;">Cash Sales</th>
-              <th style="padding: 6px 4px; text-align: right;">Safe Drops</th>
-              <th style="padding: 6px 4px; text-align: right;">Expected Drawer</th>
-              <th style="padding: 6px 4px; text-align: right;">Counted Cash</th>
-              <th style="padding: 6px 4px; text-align: right;">Variance</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${shiftsRows || `<tr><td colspan="8" style="padding: 8px; text-align: center; color: #888;">No cashier shifts recorded for this day.</td></tr>`}
-          </tbody>
-        </table>
+      <!-- Daily Cash Summary -->
+      <div style="margin-bottom: 18px; border: 1px solid #ccc; border-radius: 4px; padding: 10px;">
+        <h4 style="margin: 0 0 8px; font-size: 12px; text-transform: uppercase;">Daily Cash Movement</h4>
+        <div style="display: flex; gap: 12px; font-size: 12px;">
+          <div style="flex: 1; border: 1px solid #166534; padding: 8px; border-radius: 4px; background: #f0fdf4;">
+            <div style="color: #166534; font-size: 11px; font-weight: bold;">CASH INFLOW</div>
+            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+              <span>Cash Sales:</span>
+              <strong style="font-variant-numeric: tabular-nums;">${formatCurrency(report.dailyCashSummary?.cashSales || report.payments?.cash || 0)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 2px;">
+              <span>Repair Cash:</span>
+              <strong style="font-variant-numeric: tabular-nums;">${formatCurrency(report.dailyCashSummary?.repairCashCollected || report.repairIncome || 0)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 4px; border-top: 1px dotted #166534; padding-top: 2px;">
+              <span>Total In:</span>
+              <strong style="font-variant-numeric: tabular-nums;">${formatCurrency(report.dailyCashSummary?.totalCashIn || ((report.payments?.cash || 0) + (report.repairIncome || 0)))}</strong>
+            </div>
+          </div>
+          <div style="flex: 1; border: 1px solid #b91c1c; padding: 8px; border-radius: 4px; background: #fef2f2;">
+            <div style="color: #b91c1c; font-size: 11px; font-weight: bold;">CASH OUTFLOW</div>
+            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+              <span>Cash Refunds:</span>
+              <strong style="color: #b91c1c; font-variant-numeric: tabular-nums;">-${formatCurrency(report.dailyCashSummary?.cashRefunds || 0)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 4px; border-top: 1px dotted #b91c1c; padding-top: 2px;">
+              <span>Total Out:</span>
+              <strong style="color: #b91c1c; font-variant-numeric: tabular-nums;">-${formatCurrency(report.dailyCashSummary?.totalCashOut || (report.dailyCashSummary?.cashRefunds || 0))}</strong>
+            </div>
+          </div>
+          <div style="flex: 1; border: 1px solid #000; padding: 8px; border-radius: 4px; background: #f9fafb; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+            <div style="font-size: 11px; font-weight: bold;">NET CASH MOVEMENT</div>
+            <div style="font-size: 18px; font-weight: 900; margin-top: 4px; color: ${(report.dailyCashSummary?.netCashMovement || 0) >= 0 ? '#166534' : '#b91c1c'}; font-variant-numeric: tabular-nums;">
+              ${formatCurrency(report.dailyCashSummary?.netCashMovement || 0)}
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Day's Sales Log -->
@@ -802,29 +908,6 @@ export function renderDayEndStatusReportHTML(
   shopName: string,
   generatedBy: string
 ): string {
-  const shiftsRows = (statusData.shifts || [])
-    .map(
-      (sh: any) => `
-      <tr style="border-bottom: 1px solid #ddd; font-size: 11px;">
-        <td style="padding: 6px 4px;"><strong>${sh.cashierName}</strong></td>
-        <td style="padding: 6px 4px; text-align: center;">
-          <span style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: bold; background: ${sh.isOpen ? '#fef3c7; color: #b45309' : '#dcfce7; color: #15803d'};">
-            ${sh.status}
-          </span>
-        </td>
-        <td style="padding: 6px 4px; text-align: right;">${formatCurrency(sh.openingFloat)}</td>
-        <td style="padding: 6px 4px; text-align: right;">${formatCurrency(sh.cashSales)}</td>
-        <td style="padding: 6px 4px; text-align: right;">${formatCurrency(sh.cashDrops)}</td>
-        <td style="padding: 6px 4px; text-align: right; font-weight: bold;">${formatCurrency(sh.expectedCash)}</td>
-        <td style="padding: 6px 4px; text-align: right;">${sh.closingCountedCash !== undefined ? formatCurrency(sh.closingCountedCash) : "NOT CLOSED"}</td>
-        <td style="padding: 6px 4px; text-align: right; font-weight: bold; color: ${(sh.variance || 0) < 0 ? '#b91c1c' : '#047857'};">
-          ${sh.variance !== undefined ? formatCurrency(sh.variance) : "-"}
-        </td>
-      </tr>
-    `
-    )
-    .join("");
-
   return `
     <div style="font-family: Arial, sans-serif; max-width: 210mm; margin: 0 auto; padding: 15mm; color: #111; background: #fff;">
       <div style="border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-end;">
@@ -834,22 +917,11 @@ export function renderDayEndStatusReportHTML(
           <div style="font-size: 11px; color: #555;">Audited by: ${generatedBy} &nbsp;|&nbsp; Printed at: ${formatDate(Date.now())}</div>
         </div>
         <div style="text-align: right;">
-          <div style="display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 900; background: ${statusData.allShiftsClosed ? '#dcfce7; color: #166534' : '#fee2e2; color: #991b1b'}; border: 1px solid #000;">
-            ${statusData.allShiftsClosed ? "ALL SHIFTS CLOSED" : "PENDING SHIFT CLOSURE"}
+          <div style="display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 900; background: ${(!statusData.missingInvoices || statusData.missingInvoices.length === 0) ? '#dcfce7; color: #166534' : '#fee2e2; color: #991b1b'}; border: 1px solid #000;">
+            ${(!statusData.missingInvoices || statusData.missingInvoices.length === 0) ? "INVOICES INTACT" : "SEQUENCE GAP DETECTED"}
           </div>
         </div>
       </div>
-
-      ${
-        statusData.salesReconciliationMismatch
-          ? `
-        <div style="background: #fef2f2; border: 1px solid #b91c1c; padding: 10px 14px; border-radius: 4px; margin-bottom: 16px; color: #991b1b; font-size: 12px;">
-          <strong>WARNING: RECONCILIATION MISMATCH DETECTED</strong><br/>
-          Cash recorded across cashier shifts (${formatCurrency(statusData.shiftSalesSum)}) does not match cash sales on invoices (${formatCurrency(statusData.payments?.cash || 0)}). Review individual shift cash movements.
-        </div>
-      `
-          : ""
-      }
 
       <!-- Invoice Counts by Status -->
       <div style="margin-bottom: 16px;">
@@ -895,35 +967,39 @@ export function renderDayEndStatusReportHTML(
         </div>
       </div>
 
-      <!-- Shifts Reconciliation Table -->
-      <div style="margin-bottom: 20px;">
-        <h4 style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase;">Cashier Shift Drawers & Variance</h4>
-        <table style="width: 100%; border-collapse: collapse; border: 1px solid #ccc;">
+      <!-- Daily Cash Summary Reconciliation -->
+      <div style="margin-bottom: 20px; border: 1px solid #ccc; border-radius: 4px; padding: 12px;">
+        <h4 style="margin: 0 0 10px; font-size: 12px; text-transform: uppercase;">Daily Cash Movement & Tender Reconciliation</h4>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
           <thead>
             <tr style="background: #f9fafb; border-bottom: 1px solid #ccc; font-size: 10px; text-transform: uppercase;">
-              <th style="padding: 6px 4px; text-align: left;">Cashier</th>
-              <th style="padding: 6px 4px; text-align: center;">Shift Status</th>
-              <th style="padding: 6px 4px; text-align: right;">Opening Float</th>
-              <th style="padding: 6px 4px; text-align: right;">Cash Sales</th>
-              <th style="padding: 6px 4px; text-align: right;">Safe Drops</th>
-              <th style="padding: 6px 4px; text-align: right;">Expected Drawer</th>
-              <th style="padding: 6px 4px; text-align: right;">Counted Cash</th>
-              <th style="padding: 6px 4px; text-align: right;">Variance</th>
+              <th style="padding: 6px; text-align: left;">Category</th>
+              <th style="padding: 6px; text-align: right;">Amount</th>
+              <th style="padding: 6px; text-align: left;">Notes</th>
             </tr>
           </thead>
           <tbody>
-            ${shiftsRows || `<tr><td colspan="8" style="padding: 8px; text-align: center; color: #888;">No shifts recorded for this date.</td></tr>`}
-          </tbody>
-          <tfoot>
-            <tr style="background: #f3f4f6; font-weight: 900; font-size: 11px; border-top: 2px solid #000;">
-              <td colspan="5" style="padding: 8px 4px;">TOTAL DRAWER RECONCILIATION:</td>
-              <td style="padding: 8px 4px; text-align: right;">${formatCurrency(statusData.totalExpectedDrawerCash)}</td>
-              <td style="padding: 8px 4px; text-align: right;">${formatCurrency(statusData.totalActualCountedCash)}</td>
-              <td style="padding: 8px 4px; text-align: right; color: ${statusData.totalVariance < 0 ? '#b91c1c' : '#047857'};">
-                ${formatCurrency(statusData.totalVariance)}
-              </td>
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 6px;">Cash Sales (Tendered - Change)</td>
+              <td style="padding: 6px; text-align: right; font-weight: bold; font-variant-numeric: tabular-nums;">${formatCurrency(statusData.dailyCashSummary?.cashSales || statusData.payments?.cash || 0)}</td>
+              <td style="padding: 6px; color: #555;">Completed cash sales</td>
             </tr>
-          </tfoot>
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 6px;">Repair Cash Collected</td>
+              <td style="padding: 6px; text-align: right; font-weight: bold; font-variant-numeric: tabular-nums;">${formatCurrency(statusData.dailyCashSummary?.repairCashCollected || statusData.repairIncome || 0)}</td>
+              <td style="padding: 6px; color: #555;">Advance + delivery cash settled today</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 6px;">Customer Cash Refunds</td>
+              <td style="padding: 6px; text-align: right; font-weight: bold; font-variant-numeric: tabular-nums; color: #b91c1c;">-${formatCurrency(statusData.dailyCashSummary?.cashRefunds || 0)}</td>
+              <td style="padding: 6px; color: #555;">Cash returned on returns</td>
+            </tr>
+            <tr style="background: #f3f4f6; font-weight: 900; font-size: 13px; border-top: 2px solid #000;">
+              <td style="padding: 8px 6px;">NET CASH MOVEMENT:</td>
+              <td style="padding: 8px 6px; text-align: right; font-variant-numeric: tabular-nums; color: ${(statusData.dailyCashSummary?.netCashMovement || 0) >= 0 ? '#166534' : '#b91c1c'};">${formatCurrency(statusData.dailyCashSummary?.netCashMovement || 0)}</td>
+              <td style="padding: 8px 6px; font-size: 11px; font-weight: normal; color: #555;">Inflow minus Outflow</td>
+            </tr>
+          </tbody>
         </table>
       </div>
 

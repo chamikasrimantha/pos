@@ -7,15 +7,15 @@ import {
   getInventoryForShop,
   getRepairOrders,
   getTransfers,
-  getShiftHistory,
+  getSales,
+  getDailyCashSummary,
   getSuppliers,
   getSupplierLedger,
   getCheques,
 } from "@/lib/firestore-service";
-import { formatCurrency, formatDate } from "@/lib/receipt-generator";
-import { computeExpectedDrawerCash } from "@/lib/shift-math";
+import { formatCurrency, formatDate, renderDailyCashSummaryHTML } from "@/lib/receipt-generator";
 import {
-  BarChart3,
+  Coins,
   TrendingUp,
   Wrench,
   ArrowLeftRight,
@@ -27,12 +27,13 @@ import {
 import { DailySalesView } from "./DailySalesView";
 
 export function ReportsView() {
-  const { activeShop, dataVersion } = useApp();
+  const { activeShop, dataVersion, openPrintModal } = useApp();
 
-  const [reportType, setReportType] = useState<"DAILY_SALES" | "SALES" | "SHIFTS" | "REPAIRS" | "STOCK">("DAILY_SALES");
+  const [reportType, setReportType] = useState<"DAILY_SALES" | "DAILY_CASH" | "REPAIRS" | "STOCK">("DAILY_SALES");
 
   // Load all operational collections for active shop
-  const shifts = useMemo(() => getShiftHistory(activeShop.id), [activeShop.id, dataVersion]);
+  const sales = useMemo(() => getSales(activeShop.id), [activeShop.id, dataVersion]);
+  const dailyCash = useMemo(() => getDailyCashSummary({ shopId: activeShop.id }), [activeShop.id, dataVersion]);
   const repairs = useMemo(() => getRepairOrders(activeShop.id), [activeShop.id, dataVersion]);
   const inventoryList = useMemo(() => getInventoryForShop(activeShop.id), [activeShop.id, dataVersion]);
   const transfers = useMemo(() => getTransfers(), [dataVersion]);
@@ -67,28 +68,30 @@ export function ReportsView() {
     }, 0);
   }, [suppliers, dataVersion]);
 
-  const totalShiftSales = useMemo(() => {
-    return shifts.reduce((sum, s) => sum + s.cashSales + s.cardSales + s.transferSales, 0);
-  }, [shifts]);
+  const totalGrossSales = useMemo(() => {
+    return sales.filter((s) => s.status !== "CANCELLED").reduce((sum, s) => sum + s.total, 0);
+  }, [sales]);
 
-  const totalShiftRefunds = useMemo(() => {
-    return shifts.reduce((sum, s) => sum + (s.cashRefunds || 0), 0);
-  }, [shifts]);
+  const totalRefunds = useMemo(() => {
+    return sales.reduce((sum, s) => sum + (s.returnedAmount || 0), 0);
+  }, [sales]);
 
-  const netSales = Math.max(0, totalShiftSales - totalShiftRefunds);
+  const netSales = Math.max(0, totalGrossSales - totalRefunds);
 
   // CSV Export utility
   const handleExportCSV = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
-    if (reportType === "SALES" || reportType === "SHIFTS") {
-      csvContent += "ShiftNumber,Cashier,OpenedAt,ClosedAt,OpeningFloat,CashSales,CardSales,Refunds,ExpectedCash,CountedCash,Variance,Status\n";
-      shifts.forEach((s) => {
-        csvContent += `"${s.shiftNumber}","${s.cashierNameCache}","${formatDate(s.openedAt)}","${
-          s.closedAt ? formatDate(s.closedAt) : "OPEN"
-        }",${s.openingFloat},${s.cashSales},${s.cardSales},${s.cashRefunds || 0},${computeExpectedDrawerCash(s)},${
-          s.actualCashCounted || 0
-        },${s.variance || 0},"${s.status}"\n`;
-      });
+    if (reportType === "DAILY_CASH") {
+      csvContent += "Category,Amount\n";
+      csvContent += `"Gross Cash Sales",${dailyCash.cashSales}\n`;
+      csvContent += `"Repair Cash Collected",${dailyCash.repairCashCollected}\n`;
+      csvContent += `"Customer Payments On Account",${dailyCash.cashReceivedOnAccount || 0}\n`;
+      csvContent += `"Total Cash Inflow",${dailyCash.totalCashIn}\n`;
+      csvContent += `"Cash Refunds",${dailyCash.cashRefunds}\n`;
+      csvContent += `"Cash Paid For Purchases",${dailyCash.cashPaidForPurchases || 0}\n`;
+      csvContent += `"Cash Advances",${dailyCash.cashAdvancesGiven || 0}\n`;
+      csvContent += `"Total Cash Outflow",${dailyCash.totalCashOut}\n`;
+      csvContent += `"Net Cash Movement",${dailyCash.netCashMovement}\n`;
     } else if (reportType === "REPAIRS") {
       csvContent += "RepairNumber,Customer,Phone,ShoeBrand,Status,EstimatedCost,AdvancePaid,BalanceDue,PromisedDate\n";
       repairs.forEach((r) => {
@@ -157,7 +160,7 @@ export function ReportsView() {
             {formatCurrency(netSales)}
           </div>
           <div style={{ fontSize: "12px", color: "var(--ink-3)", marginTop: "4px" }}>
-            Gross: {formatCurrency(totalShiftSales)}
+            Gross: {formatCurrency(totalGrossSales)}
           </div>
         </div>
 
@@ -255,10 +258,10 @@ export function ReportsView() {
           <Calendar size={15} /> Daily sales & reports
         </button>
         <button
-          className={reportType === "SALES" ? "active" : ""}
-          onClick={() => setReportType("SALES")}
+          className={reportType === "DAILY_CASH" ? "active" : ""}
+          onClick={() => setReportType("DAILY_CASH")}
         >
-          <BarChart3 size={15} /> Shift sales & reconciliation
+          <Coins size={15} /> Daily Cash Summary
         </button>
         <button
           className={reportType === "REPAIRS" ? "active" : ""}
@@ -290,52 +293,61 @@ export function ReportsView() {
             overflow: "hidden",
           }}
         >
-          {reportType === "SALES" && (
-          <div style={{ overflowX: "auto" }}>
-            <table className="pos-table">
-              <thead>
-                <tr>
-                  <th>Shift #</th>
-                  <th>Cashier</th>
-                  <th>Opened</th>
-                  <th className="num">Opening float</th>
-                  <th className="num">Cash sales</th>
-                  <th className="num">Card sales</th>
-                  <th className="num">Refunds</th>
-                  <th className="num">Net inflow</th>
-                  <th className="num">Variance</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shifts.map((s) => (
-                  <tr key={s.id}>
-                    <td style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{s.shiftNumber}</td>
-                    <td>{s.cashierNameCache}</td>
-                    <td style={{ fontSize: "13px", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{formatDate(s.openedAt)}</td>
-                    <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(s.openingFloat)}</td>
-                    <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(s.cashSales)}</td>
-                    <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(s.cardSales)}</td>
-                    <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>-{formatCurrency(s.cashRefunds || 0)}</td>
-                    <td className="num" style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
-                      {formatCurrency(s.cashSales + s.cardSales + s.transferSales - (s.cashRefunds || 0))}
-                    </td>
-                    <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>
-                      <span className={`badge ${(s.variance || 0) === 0 ? "badge-success" : "badge-danger"}`}>
-                        {s.variance !== undefined ? formatCurrency(s.variance) : "—"}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`badge ${s.status === "CLOSED" ? "badge-neutral" : "badge-success"}`}>
-                        {s.status === "CLOSED" ? "Closed" : "Open"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          {reportType === "DAILY_CASH" && (
+            <div style={{ padding: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                <div>
+                  <h3 style={{ fontSize: "18px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
+                    Today's Cash Movement & Reconciliation
+                  </h3>
+                  <div style={{ fontSize: "13px", color: "var(--ink-3)", marginTop: "4px" }}>
+                    Outlet: {activeShop.name} &bull; Derived directly from transactions (Asia/Colombo)
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => openPrintModal("Daily Cash Summary - 80mm", renderDailyCashSummaryHTML(dailyCash, activeShop.name, "THERMAL_80MM"))}
+                  >
+                    Print 80mm
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => openPrintModal("Daily Cash Summary - A4", renderDailyCashSummaryHTML(dailyCash, activeShop.name, "A4"))}
+                  >
+                    Print A4
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px", marginBottom: "20px" }}>
+                <div style={{ padding: "16px", background: "var(--surface-sunken)", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                  <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>Gross Cash Sales</div>
+                  <div style={{ fontSize: "20px", fontWeight: "800", color: "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+                    {formatCurrency(dailyCash.cashSales)}
+                  </div>
+                </div>
+                <div style={{ padding: "16px", background: "var(--surface-sunken)", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                  <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>Repair Cash Collected</div>
+                  <div style={{ fontSize: "20px", fontWeight: "800", color: "var(--ink)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+                    {formatCurrency(dailyCash.repairCashCollected)}
+                  </div>
+                </div>
+                <div style={{ padding: "16px", background: "var(--surface-sunken)", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                  <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>Cash Refunds</div>
+                  <div style={{ fontSize: "20px", fontWeight: "800", color: "var(--danger)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+                    -{formatCurrency(dailyCash.cashRefunds)}
+                  </div>
+                </div>
+                <div style={{ padding: "16px", background: "var(--surface-sunken)", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                  <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>Net Cash Movement</div>
+                  <div style={{ fontSize: "20px", fontWeight: "900", color: dailyCash.netCashMovement >= 0 ? "var(--success)" : "var(--danger)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+                    {formatCurrency(dailyCash.netCashMovement)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
         {reportType === "REPAIRS" && (
           <div style={{ overflowX: "auto" }}>

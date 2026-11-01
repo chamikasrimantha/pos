@@ -25,7 +25,6 @@ export function ReturnsDesk() {
   const {
     activeShop,
     currentUser,
-    activeShift,
     settings,
     openPrintModal,
     showToast,
@@ -132,8 +131,8 @@ export function ReturnsDesk() {
 
   // Process Return / Exchange
   const handleSubmitReturn = async () => {
-    if (!activeShift || !currentUser) {
-      showToast("Cannot process return: Active open cashier shift is required.", "error");
+    if (!currentUser) {
+      showToast("Cannot process return: User session required.", "error");
       return;
     }
     if (!loadedSale) return;
@@ -188,7 +187,6 @@ export function ReturnsDesk() {
         items: itemsToReturn,
         refundMethod: mode === "EXCHANGE" ? "EVEN_EXCHANGE" : refundMethod,
         cashierId: currentUser.uid,
-        shiftId: activeShift.id,
         notes: returnNotes.trim() || undefined,
         exchangeReplacement:
           mode === "EXCHANGE" && replacementVariant

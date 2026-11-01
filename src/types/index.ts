@@ -220,7 +220,7 @@ export interface Sale {
   shopId: string;
   cashierId: string;
   cashierNameCache: string;
-  shiftId: string; // Mandatory active shift
+  shiftId?: string; // Optional legacy shift ID
   customerName?: string;
   customerPhone?: string;
   subtotal: number;
@@ -277,7 +277,7 @@ export interface CustomerReturn {
   originalSaleId: string;
   originalInvoiceNumber: string;
   cashierId: string;
-  shiftId: string;
+  shiftId?: string; // Optional legacy shift ID
   type: ReturnType;
   items: ReturnItem[];
   subtotalRefund: number;
@@ -310,7 +310,7 @@ export interface ShoeRepairOrder {
   repairNumber: string; // e.g. "RW-REP-000102"
   shopId: string;
   intakeCashierId: string;
-  intakeShiftId: string;
+  intakeShiftId?: string; // Optional legacy
   customerName: string;
   customerPhone: string;
   customerAddress?: string | null;
@@ -333,7 +333,7 @@ export interface ShoeRepairOrder {
   completedAt?: number | null;
   deliveredAt?: number | null;
   deliveryCashierId?: string | null;
-  deliveryShiftId?: string | null;
+  deliveryShiftId?: string | null; // Optional legacy
   deliveryPaymentMethod?: PaymentMethod | null;
   notes?: string;
   statusHistory: RepairStatusHistory[];
@@ -487,6 +487,32 @@ export interface SystemSettings {
   barcodeFormat: "EAN13" | "CODE128";
   currencySymbol: string;
   timeZone: string; // "Asia/Colombo"
+}
+
+export interface DailyCashSummary {
+  shopId?: string;
+  cashierId?: string;
+  cashierName?: string;
+  dateKey: string;
+  periodLabel: string;
+  // Cash Inflow
+  cashSales: number; // Cash tendered minus change given
+  cashReceivedOnAccount: number;
+  repairCashCollected: number;
+  totalCashIn: number;
+  // Cash Outflow
+  cashRefunds: number;
+  cashPaidForPurchases: number;
+  cashAdvancesGiven: number;
+  totalCashOut: number;
+  // Net Movement
+  netCashMovement: number; // totalCashIn - totalCashOut
+  // Operational counts
+  salesCount: number;
+  refundsCount: number;
+  repairsCount: number;
+  purchasesCount: number;
+  cashierBreakdowns?: DailyCashSummary[];
 }
 
 export type ErrorCode =
