@@ -15,6 +15,10 @@ import {
   Purchase,
   Cheque,
   Supplier,
+  Employee,
+  EmployeePayment,
+  PayrollMonth,
+  LeaveRecord,
 } from "@/types";
 import { generateBarcodeSVG } from "./barcode-svg";
 
@@ -1628,6 +1632,243 @@ export function renderChequeVoucherHTML(
             Payee / Supplier Acknowledgment
           </div>
           <div style="color: #64748b; font-size: 10px;">Signature & Date</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export function renderEmployeePayslipHTML(
+  payroll: PayrollMonth,
+  employee: Employee,
+  shop: Shop,
+  wagePayments: EmployeePayment[],
+  leaveRecords: LeaveRecord[]
+): string {
+  const wageRows = wagePayments
+    .filter((w) => w.type === "DAILY_WAGE" || w.type === "WAGE_REVERSAL")
+    .map(
+      (w) => `
+      <tr>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0;">${formatDate(w.date)}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0;">${w.type === "WAGE_REVERSAL" ? "Wage Reversal" : "Daily Wage"} (${w.method})</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; color: #64748b;">${w.note || "-"}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-variant-numeric: tabular-nums; ${w.amount < 0 ? "color: #b91c1c;" : ""}">
+          ${formatCurrency(w.amount)}
+        </td>
+      </tr>
+    `
+    )
+    .join("");
+
+  const approvedLeaves = leaveRecords.filter(
+    (l) => l.employeeId === employee.id && l.status === "APPROVED"
+  );
+
+  return `
+    <div style="font-family: Arial, sans-serif; width: 210mm; min-height: 297mm; padding: 15mm; margin: 0 auto; background: #fff; color: #000; box-sizing: border-box; font-size: 13px; line-height: 1.45;">
+      <!-- Header -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 16px;">
+        <div>
+          <div style="font-size: 24px; font-weight: 900; text-transform: uppercase; color: #0f172a;">${shop.name}</div>
+          <div style="font-size: 12px; color: #475569; margin-top: 2px;">${shop.address || ""} | Tel: ${shop.phone || ""}</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 18px; font-weight: 900; color: #0284c7; text-transform: uppercase;">MONTHLY SALARY PAYSLIP</div>
+          <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-top: 3px;">Month: ${payroll.month}</div>
+        </div>
+      </div>
+
+      <!-- Employee Info Card -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px 16px; margin-bottom: 20px;">
+        <div>
+          <div><strong>Employee Name:</strong> ${employee.name}</div>
+          <div><strong>Designation:</strong> ${employee.designation}</div>
+          <div><strong>Branch:</strong> ${shop.name}</div>
+        </div>
+        <div>
+          <div><strong>Mobile:</strong> ${employee.phone}</div>
+          <div><strong>Monthly Fixed Salary:</strong> <span style="font-weight: 700; font-variant-numeric: tabular-nums;">${formatCurrency(payroll.effectiveMonthlySalary)}</span></div>
+          ${payroll.proRatedSalary !== payroll.effectiveMonthlySalary ? `<div style="color: #b45309; font-size: 12px;">* Pro-rated for active days: ${formatCurrency(payroll.proRatedSalary)}</div>` : ""}
+        </div>
+      </div>
+
+      <!-- Section: Daily Wages Deducted -->
+      <div style="margin-bottom: 20px;">
+        <div style="font-size: 14px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">
+          1. Daily Wages Received This Month
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+          <thead>
+            <tr style="background: #f1f5f9; text-align: left;">
+              <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">Date</th>
+              <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">Description</th>
+              <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">Note</th>
+              <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1; text-align: right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${wageRows || `<tr><td colspan="4" style="padding: 8px; text-align: center; color: #64748b; font-style: italic;">No daily wages drawn during this month</td></tr>`}
+          </tbody>
+          <tfoot>
+            <tr style="font-weight: 700; background: #f8fafc;">
+              <td colspan="3" style="padding: 6px 8px; text-align: right;">Total Daily Wages Drawn:</td>
+              <td style="padding: 6px 8px; text-align: right; font-variant-numeric: tabular-nums; color: #b91c1c;">
+                -${formatCurrency(payroll.dailyWagesPaid)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Section: Deductions & Net Pay Summary -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;">
+        <!-- Deductions breakdown -->
+        <div>
+          <div style="font-size: 14px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">
+            2. Deductions
+          </div>
+          <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+            <tbody>
+              <tr>
+                <td style="padding: 4px 0;">Staff credit recovery:</td>
+                <td style="padding: 4px 0; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(payroll.staffCreditRecovered)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0;">Leave deductions:</td>
+                <td style="padding: 4px 0; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(payroll.leaveDeduction)}</td>
+              </tr>
+              ${payroll.otherDeductions.map((d) => `
+                <tr>
+                  <td style="padding: 4px 0;">${d.title}:</td>
+                  <td style="padding: 4px 0; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(d.amount)}</td>
+                </tr>
+              `).join("")}
+              <tr style="border-top: 1px solid #cbd5e1; font-weight: 700;">
+                <td style="padding: 6px 0;">Total Deductions:</td>
+                <td style="padding: 6px 0; text-align: right; font-variant-numeric: tabular-nums; color: #b91c1c;">
+                  -${formatCurrency(payroll.totalDeductions)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Net Payable Box -->
+        <div style="background: #f0fdf4; border: 2px solid #16a34a; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="font-size: 13px; font-weight: 700; color: #166534; text-transform: uppercase;">
+              Net Salary Payable
+            </div>
+            <div style="font-size: 26px; font-weight: 900; color: #15803d; margin-top: 4px; font-variant-numeric: tabular-nums;">
+              ${formatCurrency(payroll.netPayable)}
+            </div>
+            ${payroll.isOverpaid ? `<div style="color: #b91c1c; font-weight: 700; font-size: 12px; margin-top: 4px;">* Overpaid by ${formatCurrency(payroll.overpaidAmount)}</div>` : ""}
+          </div>
+          <div style="font-size: 11px; color: #166534; border-top: 1px dashed #86efac; padding-top: 6px; margin-top: 8px;">
+            Status: <strong>${payroll.status}</strong> ${payroll.paidMethod ? `via ${payroll.paidMethod}` : ""}
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Leave Summary -->
+      <div style="margin-bottom: 28px;">
+        <div style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">
+          3. Attendance & Leave Record
+        </div>
+        <div style="display: flex; gap: 16px; font-size: 12px; background: #f8fafc; padding: 8px 12px; border-radius: 4px; border: 1px solid #e2e8f0;">
+          <div>Paid Leave Days: <strong>${payroll.paidLeaveDays}</strong></div>
+          <div>Unpaid Leave Days: <strong>${payroll.unpaidLeaveDays}</strong></div>
+          <div>Total Approved Records: <strong>${approvedLeaves.length}</strong></div>
+        </div>
+      </div>
+
+      <!-- Dual Signature Lines -->
+      <div style="margin-top: 48px; display: flex; justify-content: space-between;">
+        <div style="text-align: center; width: 40%;">
+          <div style="border-top: 1px solid #000; padding-top: 6px; font-weight: 700;">Prepared By (Super Admin)</div>
+          <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Authorized Signature & Date</div>
+        </div>
+        <div style="text-align: center; width: 40%;">
+          <div style="border-top: 1px solid #000; padding-top: 6px; font-weight: 700;">Employee Signature</div>
+          <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Acknowledgment & Date</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export function renderPayrollSummaryHTML(
+  month: string,
+  sheet: PayrollMonth[],
+  employees: Employee[],
+  shop: Shop
+): string {
+  const totalNet = sheet.reduce((s, p) => s + p.netPayable, 0);
+  const totalWages = sheet.reduce((s, p) => s + p.dailyWagesPaid, 0);
+  const totalSalary = sheet.reduce((s, p) => s + p.proRatedSalary, 0);
+
+  return `
+    <div style="font-family: Arial, sans-serif; width: 210mm; min-height: 297mm; padding: 15mm; margin: 0 auto; background: #fff; color: #000; box-sizing: border-box; font-size: 12px; line-height: 1.4;">
+      <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 16px;">
+        <div>
+          <div style="font-size: 22px; font-weight: 900; text-transform: uppercase;">${shop.name}</div>
+          <div style="font-size: 11px; color: #475569;">MONTHLY PAYROLL SUMMARY SHEET</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 16px; font-weight: 700; color: #0284c7;">${month}</div>
+          <div style="font-size: 11px; color: #64748b;">Generated: ${formatDate(Date.now())}</div>
+        </div>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px;">
+        <thead>
+          <tr style="background: #f1f5f9; text-align: left;">
+            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">Employee</th>
+            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">Designation</th>
+            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1; text-align: right;">Monthly Salary</th>
+            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1; text-align: right;">Wages Paid</th>
+            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1; text-align: right;">Deductions</th>
+            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1; text-align: right;">Net Payable</th>
+            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1; text-align: center;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sheet.map((p) => {
+            const emp = employees.find((e) => e.id === p.employeeId);
+            return `
+              <tr>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-weight: 700;">${emp?.name || p.employeeId}</td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0;">${emp?.designation || "-"}</td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(p.proRatedSalary)}</td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-variant-numeric: tabular-nums; color: #b91c1c;">${formatCurrency(p.dailyWagesPaid)}</td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(p.totalDeductions)}</td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: #166534;">${formatCurrency(p.netPayable)}</td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: center; font-size: 10px; font-weight: 700;">${p.status}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+        <tfoot>
+          <tr style="font-weight: 900; background: #f8fafc; border-top: 2px solid #000;">
+            <td colspan="2" style="padding: 8px;">Totals (${sheet.length} employees):</td>
+            <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(totalSalary)}</td>
+            <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums; color: #b91c1c;">${formatCurrency(totalWages)}</td>
+            <td style="padding: 8px; text-align: right;">-</td>
+            <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums; color: #166534; font-size: 13px;">${formatCurrency(totalNet)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div style="margin-top: 40px; display: flex; justify-content: space-between;">
+        <div style="text-align: center; width: 40%;">
+          <div style="border-top: 1px solid #000; padding-top: 6px; font-weight: 700;">Prepared By</div>
+          <div style="font-size: 10px; color: #64748b;">Super Admin</div>
+        </div>
+        <div style="text-align: center; width: 40%;">
+          <div style="border-top: 1px solid #000; padding-top: 6px; font-weight: 700;">Managing Director</div>
+          <div style="font-size: 10px; color: #64748b;">Approval & Date</div>
         </div>
       </div>
     </div>

@@ -55,6 +55,17 @@ import {
   CashAdvanceReceipt,
   SettledInvoiceRecord,
   PaymentStatus,
+  Employee,
+  EmployeeStatus,
+  SalaryHistory,
+  EmployeePayment,
+  EmployeePaymentType,
+  LeaveRecord,
+  LeaveType,
+  LeaveStatus,
+  PayrollMonth,
+  PayrollMonthStatus,
+  PayrollDeduction,
 } from "@/types";
 import {
   SEED_SHOPS,
@@ -74,7 +85,9 @@ import {
   SEED_CUSTOMER_LEDGER,
   SEED_CUSTOMER_PAYMENTS,
   SEED_CASH_ADVANCES,
+  SEED_EMPLOYEES,
 } from "./seed-data";
+import { calculateMonthlyPayroll, formatYearMonth } from "./payroll-math";
 import { computeDailyCashSummary } from "./daily-cash-math";
 import { can } from "./permissions";
 import {
@@ -118,6 +131,11 @@ interface LocalStoreState {
   cashAdvances: CashAdvanceReceipt[];
   settings: SystemSettings;
   counters: Record<string, number>;
+  employees: Employee[];
+  salaryHistory: SalaryHistory[];
+  employeePayments: EmployeePayment[];
+  leaveRecords: LeaveRecord[];
+  payrollMonths: PayrollMonth[];
 }
 
 function getInitialStore(): LocalStoreState {
@@ -156,6 +174,30 @@ function getInitialStore(): LocalStoreState {
     customerPayments: [...SEED_CUSTOMER_PAYMENTS],
     cashAdvances: [...SEED_CASH_ADVANCES],
     settings: { ...DEFAULT_SETTINGS },
+    employees: [...SEED_EMPLOYEES],
+    salaryHistory: [
+      {
+        id: "sal_kamal_1",
+        employeeId: "emp_kamal_silva",
+        monthlySalary: 60000,
+        effectiveFrom: "2026-01",
+        effectiveDate: new Date("2026-01-01T00:00:00+05:30").getTime(),
+        createdAt: new Date("2026-01-01T00:00:00+05:30").getTime(),
+        reason: "Initial appointment salary",
+      },
+      {
+        id: "sal_nadeeka_1",
+        employeeId: "emp_nadeeka_silva",
+        monthlySalary: 55000,
+        effectiveFrom: "2026-03",
+        effectiveDate: new Date("2026-03-01T00:00:00+05:30").getTime(),
+        createdAt: new Date("2026-03-01T00:00:00+05:30").getTime(),
+        reason: "Initial appointment salary",
+      },
+    ],
+    employeePayments: [],
+    leaveRecords: [],
+    payrollMonths: [],
     counters: {
       "rightway_inv": 100,
       "mega_inv": 50,
@@ -248,6 +290,13 @@ export function loadLocalStore(): LocalStoreState {
     if (!parsed.customerLedger) parsed.customerLedger = [...SEED_CUSTOMER_LEDGER];
     if (!parsed.customerPayments) parsed.customerPayments = [...SEED_CUSTOMER_PAYMENTS];
     if (!parsed.cashAdvances) parsed.cashAdvances = [...SEED_CASH_ADVANCES];
+    if (!parsed.employees || parsed.employees.length === 0) {
+      parsed.employees = [...SEED_EMPLOYEES];
+    }
+    if (!parsed.salaryHistory) parsed.salaryHistory = [];
+    if (!parsed.employeePayments) parsed.employeePayments = [];
+    if (!parsed.leaveRecords) parsed.leaveRecords = [];
+    if (!parsed.payrollMonths) parsed.payrollMonths = [];
     if (!parsed.counters) parsed.counters = {};
     if (parsed.counters["rightway_pay"] === undefined) parsed.counters["rightway_pay"] = 1;
     if (parsed.counters["mega_pay"] === undefined) parsed.counters["mega_pay"] = 1;
@@ -4594,4 +4643,833 @@ export function getDayEndStatusData(
     dailyCashSummary,
     sales: sortedSales,
   };
+}
+
+// ==========================================
+// 12. WP9: EMPLOYEES, WAGES, PAYROLL & LEAVE (SUPER ADMIN ONLY)
+// ==========================================
+
+export function getEmployees(callingUser: UserProfile): Employee[] {
+  if (callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can access employees data");
+  }
+  const store = loadLocalStore();
+  return store.employees || [];
+}
+
+export async function createEmployee(params: {
+  name: string;
+  phone: string;
+  designation: string;
+  branchId: string;
+  joinDate: number;
+  monthlySalary: number;
+  dailyWageDefault?: number;
+  userId?: string | null;
+  createStaffCustomer?: boolean;
+  notes?: string;
+  callingUser: UserProfile;
+}): Promise<Employee> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can create employees");
+  }
+
+  const store = loadLocalStore();
+  const rawPhone = params.phone.replace(/[\s\-]/g, "");
+  const existing = store.employees.find(
+    (e) => e.phone.replace(/[\s\-]/g, "") === rawPhone && e.status === "ACTIVE"
+  );
+  if (existing) {
+    throw new Error("An active employee with this phone number already exists.");
+  }
+
+  const employeeId = `emp_${Date.now()}`;
+  let customerAccountId: string | null = null;
+
+  // If Super Admin chooses to link/create a staff customer account
+  if (params.createStaffCustomer) {
+    const custId = `cust_staff_${Date.now()}`;
+    customerAccountId = custId;
+    const staffCustomer: Customer = {
+      id: custId,
+      name: params.name.trim(),
+      phone: params.phone.trim(),
+      type: "STAFF",
+      employeeId,
+      creditLimit: 30000,
+      notes: `Staff customer account for ${params.designation} (${params.name})`,
+      active: true,
+      createdBy: params.callingUser.uid || (params.callingUser as any).id || "admin",
+      createdAt: Date.now(),
+    };
+    store.customers.push(staffCustomer);
+  }
+
+  const employee: Employee = {
+    id: employeeId,
+    name: params.name.trim(),
+    phone: params.phone.trim(),
+    designation: params.designation.trim(),
+    branchId: params.branchId,
+    joinDate: params.joinDate,
+    status: "ACTIVE",
+    monthlySalary: params.monthlySalary,
+    dailyWageDefault: params.dailyWageDefault,
+    userId: params.userId || null,
+    customerAccountId,
+    notes: params.notes?.trim() || undefined,
+    createdAt: Date.now(),
+  };
+
+  store.employees.push(employee);
+
+  // Initial salary history entry
+  const effectiveFrom = formatYearMonth(params.joinDate);
+  const initialSalary: SalaryHistory = {
+    id: `sal_${Date.now()}`,
+    employeeId,
+    monthlySalary: params.monthlySalary,
+    effectiveFrom,
+    effectiveDate: params.joinDate,
+    createdAt: Date.now(),
+    reason: "Initial appointment salary",
+  };
+  store.salaryHistory.push(initialSalary);
+
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "EMPLOYEE_CREATE",
+    entityType: "employees",
+    entityId: employeeId,
+    shopId: params.branchId,
+    after: employee,
+    reason: `Created employee ${employee.name} (${employee.designation}) with salary Rs. ${employee.monthlySalary}`,
+  });
+
+  saveLocalStore(store);
+  return employee;
+}
+
+export async function updateEmployee(params: {
+  employeeId: string;
+  name?: string;
+  phone?: string;
+  designation?: string;
+  branchId?: string;
+  dailyWageDefault?: number;
+  userId?: string | null;
+  notes?: string;
+  callingUser: UserProfile;
+}): Promise<Employee> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can update employees");
+  }
+  const store = loadLocalStore();
+  const emp = store.employees.find((e) => e.id === params.employeeId);
+  if (!emp) throw new Error("Employee not found");
+
+  if (params.name !== undefined) emp.name = params.name.trim();
+  if (params.phone !== undefined) emp.phone = params.phone.trim();
+  if (params.designation !== undefined) emp.designation = params.designation.trim();
+  if (params.branchId !== undefined) emp.branchId = params.branchId;
+  if (params.dailyWageDefault !== undefined) emp.dailyWageDefault = params.dailyWageDefault;
+  if (params.userId !== undefined) emp.userId = params.userId || null;
+  if (params.notes !== undefined) emp.notes = params.notes.trim() || undefined;
+
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "EMPLOYEE_UPDATE",
+    entityType: "employees",
+    entityId: emp.id,
+    shopId: emp.branchId,
+    after: emp,
+    reason: `Updated employee details for ${emp.name}`,
+  });
+
+  saveLocalStore(store);
+  return emp;
+}
+
+export async function updateEmployeeSalary(params: {
+  employeeId: string;
+  newSalary: number;
+  effectiveFrom: string; // "YYYY-MM"
+  effectiveDate?: number;
+  reason?: string;
+  callingUser: UserProfile;
+}): Promise<SalaryHistory> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can change employee salary");
+  }
+  const store = loadLocalStore();
+  const emp = store.employees.find((e) => e.id === params.employeeId);
+  if (!emp) throw new Error("Employee not found");
+
+  const effectiveDate = params.effectiveDate || Date.now();
+  const history: SalaryHistory = {
+    id: `sal_${Date.now()}`,
+    employeeId: params.employeeId,
+    monthlySalary: params.newSalary,
+    effectiveFrom: params.effectiveFrom,
+    effectiveDate,
+    createdAt: Date.now(),
+    reason: params.reason?.trim() || "Salary adjustment",
+  };
+
+  store.salaryHistory.push(history);
+
+  const currentMonth = formatYearMonth(Date.now());
+  if (params.effectiveFrom <= currentMonth) {
+    emp.monthlySalary = params.newSalary;
+  }
+
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "SALARY_UPDATE",
+    entityType: "salaryHistory",
+    entityId: history.id,
+    shopId: emp.branchId,
+    after: history,
+    reason: `Updated salary for ${emp.name} to Rs. ${params.newSalary} effective from ${params.effectiveFrom}`,
+  });
+
+  saveLocalStore(store);
+  return history;
+}
+
+export async function markEmployeeLeft(params: {
+  employeeId: string;
+  leaveDate: number;
+  callingUser: UserProfile;
+}): Promise<Employee> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can mark employee as left");
+  }
+  const store = loadLocalStore();
+  const emp = store.employees.find((e) => e.id === params.employeeId);
+  if (!emp) throw new Error("Employee not found");
+
+  emp.status = "LEFT";
+  emp.leaveDate = params.leaveDate;
+
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "EMPLOYEE_LEFT",
+    entityType: "employees",
+    entityId: emp.id,
+    shopId: emp.branchId,
+    after: { status: "LEFT", leaveDate: params.leaveDate },
+    reason: `Marked employee ${emp.name} as left on ${new Date(params.leaveDate).toLocaleDateString("en-LK")}`,
+  });
+
+  saveLocalStore(store);
+  return emp;
+}
+
+export async function recordDailyWage(params: {
+  employeeId: string;
+  date: number;
+  amount: number;
+  method: "CASH" | "BANK_TRANSFER";
+  note?: string;
+  callingUser: UserProfile;
+}): Promise<{ payment: EmployeePayment; totalWagesThisMonth: number; remainingSalary: number; isOverpaid: boolean; overpaidAmount: number }> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can record daily wages");
+  }
+  const store = loadLocalStore();
+  const emp = store.employees.find((e) => e.id === params.employeeId);
+  if (!emp) throw new Error("Employee not found");
+
+  const month = formatYearMonth(params.date);
+  const paymentId = `wage_${Date.now()}`;
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+
+  const payment: EmployeePayment = {
+    id: paymentId,
+    employeeId: params.employeeId,
+    month,
+    type: "DAILY_WAGE",
+    amount: params.amount,
+    date: params.date,
+    method: params.method,
+    note: params.note?.trim() || undefined,
+    createdBy: adminId,
+    createdAt: Date.now(),
+  };
+
+  store.employeePayments.push(payment);
+
+  // Compute live totals
+  const calc = calculateMonthlyPayroll({
+    employee: emp,
+    month,
+    salaryHistories: store.salaryHistory,
+    payments: store.employeePayments,
+  });
+
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "DAILY_WAGE_RECORD",
+    entityType: "employeePayments",
+    entityId: paymentId,
+    shopId: emp.branchId,
+    after: payment,
+    reason: `Recorded daily wage Rs. ${params.amount} (${params.method}) for ${emp.name}`,
+  });
+
+  saveLocalStore(store);
+  return {
+    payment,
+    totalWagesThisMonth: calc.dailyWagesPaid,
+    remainingSalary: calc.remainingSalary,
+    isOverpaid: calc.isOverpaid,
+    overpaidAmount: calc.overpaidAmount,
+  };
+}
+
+export async function reverseDailyWage(params: {
+  paymentId: string;
+  reason: string;
+  callingUser: UserProfile;
+}): Promise<EmployeePayment> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can reverse daily wages");
+  }
+  const store = loadLocalStore();
+  const original = store.employeePayments.find((p) => p.id === params.paymentId);
+  if (!original) throw new Error("Daily wage payment record not found");
+  if (original.type !== "DAILY_WAGE") throw new Error("Can only reverse daily wage payments");
+
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+  const reversalId = `rev_wage_${Date.now()}`;
+  const reversal: EmployeePayment = {
+    id: reversalId,
+    employeeId: original.employeeId,
+    month: original.month,
+    type: "WAGE_REVERSAL",
+    amount: -original.amount,
+    date: Date.now(),
+    method: original.method,
+    note: `Reversal of wage payment ${original.id}. Reason: ${params.reason}`,
+    createdBy: adminId,
+    reversalOfId: original.id,
+    createdAt: Date.now(),
+  };
+
+  store.employeePayments.push(reversal);
+
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "DAILY_WAGE_REVERSE",
+    entityType: "employeePayments",
+    entityId: reversalId,
+    reason: `Reversed wage payment ${original.id} of Rs. ${original.amount}: ${params.reason}`,
+  });
+
+  saveLocalStore(store);
+  return reversal;
+}
+
+export function getEmployeePayments(
+  employeeId?: string,
+  month?: string,
+  callingUser?: UserProfile
+): EmployeePayment[] {
+  if (callingUser && callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can access employee payment records");
+  }
+  const store = loadLocalStore();
+  return store.employeePayments
+    .filter((p) => (!employeeId || p.employeeId === employeeId) && (!month || p.month === month))
+    .sort((a, b) => b.date - a.date);
+}
+
+export function getPayrollMonthSheet(
+  month: string,
+  callingUser: UserProfile
+): { payrollMonths: PayrollMonth[]; employees: Employee[] } {
+  if (callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can view payroll sheet");
+  }
+  const store = loadLocalStore();
+
+  const activeEmployees = store.employees.filter((emp) => {
+    if (emp.status === "ACTIVE") return true;
+    if (emp.leaveDate) {
+      const leaveMonth = formatYearMonth(emp.leaveDate);
+      return leaveMonth >= month;
+    }
+    return false;
+  });
+
+  const payrollMonths: PayrollMonth[] = activeEmployees.map((emp) => {
+    const existing = store.payrollMonths.find((p) => p.employeeId === emp.id && p.month === month);
+    if (existing && existing.status !== "OPEN") {
+      return existing;
+    }
+
+    // Get staff customer credit balance if linked
+    let staffCredit = 0;
+    if (emp.customerAccountId) {
+      const entries = store.customerLedger.filter((e) => e.customerId === emp.customerAccountId);
+      staffCredit = entries.reduce((bal, e) => {
+        if (["CREDIT_SALE", "CASH_ADVANCE"].includes(e.type)) return bal + e.amount;
+        if (["PAYMENT_RECEIVED", "RETURN_ADJUSTMENT", "SALARY_RECOVERY", "WRITE_OFF"].includes(e.type)) return bal - e.amount;
+        return bal;
+      }, 0);
+      staffCredit = Math.max(0, staffCredit);
+    }
+
+    const calc = calculateMonthlyPayroll({
+      employee: emp,
+      month,
+      salaryHistories: store.salaryHistory,
+      payments: store.employeePayments,
+      staffCreditOutstanding: staffCredit,
+      staffCreditRecoveryChosen: existing?.staffCreditRecovered,
+      leaveRecords: store.leaveRecords,
+      otherDeductions: existing?.otherDeductions || [],
+    });
+
+    const item: PayrollMonth = {
+      id: `${emp.id}_${month}`,
+      employeeId: emp.id,
+      month,
+      status: existing?.status || "OPEN",
+      effectiveMonthlySalary: calc.effectiveMonthlySalary,
+      proRatedSalary: calc.proRatedSalary,
+      dailyWagesPaid: calc.dailyWagesPaid,
+      staffCreditOutstanding: calc.staffCreditOutstanding,
+      staffCreditRecovered: calc.staffCreditRecovered,
+      paidLeaveDays: calc.paidLeaveDays,
+      unpaidLeaveDays: calc.unpaidLeaveDays,
+      leaveDeduction: calc.leaveDeduction,
+      otherDeductions: calc.otherDeductions,
+      totalDeductions: calc.totalDeductions,
+      netPayable: calc.netPayable,
+      isOverpaid: calc.isOverpaid,
+      overpaidAmount: calc.overpaidAmount,
+      finalisedAt: existing?.finalisedAt || null,
+      finalisedBy: existing?.finalisedBy || null,
+      paidAt: existing?.paidAt || null,
+      paidMethod: existing?.paidMethod || null,
+      paymentReference: existing?.paymentReference || null,
+      reopenedAt: existing?.reopenedAt || null,
+      reopenedBy: existing?.reopenedBy || null,
+      reopenReason: existing?.reopenReason || null,
+      createdAt: existing?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    return item;
+  });
+
+  return { payrollMonths, employees: activeEmployees };
+}
+
+export async function finalisePayrollMonth(params: {
+  employeeId: string;
+  month: string;
+  staffCreditRecovery?: number;
+  otherDeductions?: PayrollDeduction[];
+  callingUser: UserProfile;
+}): Promise<PayrollMonth> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can finalise payroll");
+  }
+  const store = loadLocalStore();
+  const emp = store.employees.find((e) => e.id === params.employeeId);
+  if (!emp) throw new Error("Employee not found");
+
+  const existingIdx = store.payrollMonths.findIndex(
+    (p) => p.employeeId === params.employeeId && p.month === params.month
+  );
+  if (existingIdx >= 0 && store.payrollMonths[existingIdx].status !== "OPEN") {
+    throw new Error(`Payroll for ${params.month} is already finalised. Reopen it to make changes.`);
+  }
+
+  // Calculate staff credit
+  let staffCredit = 0;
+  if (emp.customerAccountId) {
+    const entries = store.customerLedger.filter((e) => e.customerId === emp.customerAccountId);
+    staffCredit = entries.reduce((bal, e) => {
+      if (["CREDIT_SALE", "CASH_ADVANCE"].includes(e.type)) return bal + e.amount;
+      if (["PAYMENT_RECEIVED", "RETURN_ADJUSTMENT", "SALARY_RECOVERY", "WRITE_OFF"].includes(e.type)) return bal - e.amount;
+      return bal;
+    }, 0);
+    staffCredit = Math.max(0, staffCredit);
+  }
+
+  const calc = calculateMonthlyPayroll({
+    employee: emp,
+    month: params.month,
+    salaryHistories: store.salaryHistory,
+    payments: store.employeePayments,
+    staffCreditOutstanding: staffCredit,
+    staffCreditRecoveryChosen: params.staffCreditRecovery,
+    leaveRecords: store.leaveRecords,
+    otherDeductions: params.otherDeductions || [],
+  });
+
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+  const finalisedRecord: PayrollMonth = {
+    id: `${emp.id}_${params.month}`,
+    employeeId: emp.id,
+    month: params.month,
+    status: "FINALISED",
+    effectiveMonthlySalary: calc.effectiveMonthlySalary,
+    proRatedSalary: calc.proRatedSalary,
+    dailyWagesPaid: calc.dailyWagesPaid,
+    staffCreditOutstanding: calc.staffCreditOutstanding,
+    staffCreditRecovered: calc.staffCreditRecovered,
+    paidLeaveDays: calc.paidLeaveDays,
+    unpaidLeaveDays: calc.unpaidLeaveDays,
+    leaveDeduction: calc.leaveDeduction,
+    otherDeductions: calc.otherDeductions,
+    totalDeductions: calc.totalDeductions,
+    netPayable: calc.netPayable,
+    isOverpaid: calc.isOverpaid,
+    overpaidAmount: calc.overpaidAmount,
+    finalisedAt: Date.now(),
+    finalisedBy: adminId,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  // If staff credit recovery > 0 and customer account linked: write SALARY_RECOVERY entry!
+  if (calc.staffCreditRecovered > 0 && emp.customerAccountId) {
+    const recoveryEntry: CustomerLedgerEntry = {
+      id: `led_recov_${Date.now()}`,
+      customerId: emp.customerAccountId,
+      shopId: emp.branchId,
+      type: "SALARY_RECOVERY",
+      amount: calc.staffCreditRecovered,
+      direction: "CREDIT",
+      referenceNumber: `Payroll Recovery ${params.month}`,
+      method: "PAYROLL",
+      note: `Deducted from ${params.month} salary (Net payable: Rs. ${calc.netPayable})`,
+      createdBy: adminId,
+      createdAt: Date.now(),
+    };
+    store.customerLedger.push(recoveryEntry);
+  }
+
+  if (existingIdx >= 0) {
+    store.payrollMonths[existingIdx] = finalisedRecord;
+  } else {
+    store.payrollMonths.push(finalisedRecord);
+  }
+
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "PAYROLL_FINALISE",
+    entityType: "payrollMonths",
+    entityId: finalisedRecord.id,
+    shopId: emp.branchId,
+    after: finalisedRecord,
+    reason: `Finalised payroll for ${emp.name} for ${params.month}. Net payable: Rs. ${calc.netPayable}`,
+  });
+
+  saveLocalStore(store);
+  return finalisedRecord;
+}
+
+export async function recordSalaryPayment(params: {
+  employeeId: string;
+  month: string;
+  paymentMethod: "CASH" | "BANK_TRANSFER";
+  paymentDate: number;
+  reference?: string;
+  callingUser: UserProfile;
+}): Promise<PayrollMonth> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can record salary payment");
+  }
+  const store = loadLocalStore();
+  const payroll = store.payrollMonths.find(
+    (p) => p.employeeId === params.employeeId && p.month === params.month
+  );
+  if (!payroll) throw new Error("Payroll record not found. Finalise payroll first.");
+  if (payroll.status === "PAID") throw new Error("This month's salary has already been paid.");
+
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+  payroll.status = "PAID";
+  payroll.paidAt = params.paymentDate;
+  payroll.paidMethod = params.paymentMethod;
+  payroll.paymentReference = params.reference?.trim() || null;
+  payroll.updatedAt = Date.now();
+
+  // Record SALARY_PAYMENT in employee payments
+  const paymentRecord: EmployeePayment = {
+    id: `sal_pay_${Date.now()}`,
+    employeeId: params.employeeId,
+    month: params.month,
+    type: "SALARY_PAYMENT",
+    amount: payroll.netPayable,
+    date: params.paymentDate,
+    method: params.paymentMethod,
+    note: `Salary settlement for ${params.month}. Ref: ${params.reference || "N/A"}`,
+    createdBy: adminId,
+    createdAt: Date.now(),
+  };
+  store.employeePayments.push(paymentRecord);
+
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "PAYROLL_PAYMENT",
+    entityType: "payrollMonths",
+    entityId: payroll.id,
+    after: payroll,
+    reason: `Paid salary of Rs. ${payroll.netPayable} via ${params.paymentMethod} for ${params.month}`,
+  });
+
+  saveLocalStore(store);
+  return payroll;
+}
+
+export async function reopenPayrollMonth(params: {
+  employeeId: string;
+  month: string;
+  reason: string;
+  callingUser: UserProfile;
+}): Promise<PayrollMonth> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can reopen payroll");
+  }
+  if (!params.reason.trim()) {
+    throw new Error("Reopening a finalised month requires an audited reason.");
+  }
+
+  const store = loadLocalStore();
+  const payroll = store.payrollMonths.find(
+    (p) => p.employeeId === params.employeeId && p.month === params.month
+  );
+  if (!payroll) throw new Error("Payroll record not found");
+
+  const emp = store.employees.find((e) => e.id === params.employeeId);
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+
+  // If staff credit recovery was posted, reverse it
+  if (payroll.staffCreditRecovered > 0 && emp?.customerAccountId) {
+    const reversalEntry: CustomerLedgerEntry = {
+      id: `led_rev_recov_${Date.now()}`,
+      customerId: emp.customerAccountId,
+      shopId: emp?.branchId || "rightway",
+      type: "ADJUSTMENT",
+      amount: payroll.staffCreditRecovered,
+      direction: "DEBIT",
+      referenceNumber: `Reversal of Payroll Recovery ${params.month}`,
+      method: "ADJUSTMENT",
+      note: `Reopened payroll for ${params.month}. Reason: ${params.reason}`,
+      createdBy: adminId,
+      createdAt: Date.now(),
+    };
+    store.customerLedger.push(reversalEntry);
+  }
+
+  payroll.status = "OPEN";
+  payroll.reopenedAt = Date.now();
+  payroll.reopenedBy = adminId;
+  payroll.reopenReason = params.reason.trim();
+  payroll.updatedAt = Date.now();
+
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "PAYROLL_REOPEN",
+    entityType: "payrollMonths",
+    entityId: payroll.id,
+    after: { status: "OPEN", reason: params.reason },
+    reason: `Reopened payroll for ${params.month}: ${params.reason}`,
+  });
+
+  saveLocalStore(store);
+  return payroll;
+}
+
+export async function assignLeaveRecord(params: {
+  employeeId: string;
+  type: LeaveType;
+  fromDate: string;
+  toDate: string;
+  days: number;
+  reason?: string;
+  callingUser: UserProfile;
+}): Promise<LeaveRecord> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can directly assign leave or off days");
+  }
+  const store = loadLocalStore();
+  const emp = store.employees.find((e) => e.id === params.employeeId);
+  if (!emp) throw new Error("Employee not found");
+
+  // Check overlap for this employee
+  const overlap = store.leaveRecords.find(
+    (lr) =>
+      lr.employeeId === params.employeeId &&
+      lr.status !== "REJECTED" &&
+      lr.status !== "CANCELLED" &&
+      !(params.toDate < lr.fromDate || params.fromDate > lr.toDate)
+  );
+  if (overlap) {
+    throw new Error("Overlapping leave request already exists for this employee.");
+  }
+
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+  const leave: LeaveRecord = {
+    id: `leave_${Date.now()}`,
+    employeeId: params.employeeId,
+    type: params.type,
+    fromDate: params.fromDate,
+    toDate: params.toDate,
+    days: params.days,
+    status: "APPROVED",
+    requestedBy: adminId,
+    decidedBy: adminId,
+    decidedAt: Date.now(),
+    reason: params.reason?.trim() || undefined,
+    createdAt: Date.now(),
+  };
+
+  store.leaveRecords.push(leave);
+
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "LEAVE_ASSIGN",
+    entityType: "leaveRecords",
+    entityId: leave.id,
+    shopId: emp.branchId,
+    after: leave,
+    reason: `Assigned ${params.type} (${params.days} days) from ${params.fromDate} to ${params.toDate} for ${emp.name}`,
+  });
+
+  saveLocalStore(store);
+  return leave;
+}
+
+export async function requestLeave(params: {
+  employeeId: string;
+  type: LeaveType;
+  fromDate: string;
+  toDate: string;
+  days: number;
+  reason?: string;
+  callingUser: UserProfile;
+}): Promise<LeaveRecord> {
+  const store = loadLocalStore();
+  const emp = store.employees.find((e) => e.id === params.employeeId);
+  if (!emp) throw new Error("Employee not found");
+
+  const userId = params.callingUser.uid || (params.callingUser as any).id || "user";
+  // Cashier can only request for their own linked employee
+  if (params.callingUser.role === "CASHIER" && emp.userId !== userId && (params.callingUser as any).linkedEmployeeId !== emp.id) {
+    throw new Error("PERMISSION_DENIED: Cashiers can only request leave for their own account");
+  }
+
+  // Check overlap
+  const overlap = store.leaveRecords.find(
+    (lr) =>
+      lr.employeeId === params.employeeId &&
+      lr.status !== "REJECTED" &&
+      lr.status !== "CANCELLED" &&
+      !(params.toDate < lr.fromDate || params.fromDate > lr.toDate)
+  );
+  if (overlap) {
+    throw new Error("Overlapping leave request already exists for this employee.");
+  }
+
+  const leave: LeaveRecord = {
+    id: `leave_${Date.now()}`,
+    employeeId: params.employeeId,
+    type: params.type,
+    fromDate: params.fromDate,
+    toDate: params.toDate,
+    days: params.days,
+    status: "REQUESTED",
+    requestedBy: userId,
+    reason: params.reason?.trim() || undefined,
+    createdAt: Date.now(),
+  };
+
+  store.leaveRecords.push(leave);
+
+  logAuditAction(store, {
+    userId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Employee",
+    action: "LEAVE_REQUEST",
+    entityType: "leaveRecords",
+    entityId: leave.id,
+    shopId: emp.branchId,
+    after: leave,
+    reason: `Leave request (${params.type}, ${params.days} days) submitted by ${emp.name}`,
+  });
+
+  saveLocalStore(store);
+  return leave;
+}
+
+export async function decideLeaveRequest(params: {
+  leaveId: string;
+  decision: "APPROVE" | "REJECT";
+  note?: string;
+  callingUser: UserProfile;
+}): Promise<LeaveRecord> {
+  if (params.callingUser.role !== "SUPER_ADMIN") {
+    throw new Error("PERMISSION_DENIED: Only Super Admin can approve or reject leave requests");
+  }
+  const store = loadLocalStore();
+  const leave = store.leaveRecords.find((l) => l.id === params.leaveId);
+  if (!leave) throw new Error("Leave request not found");
+
+  const adminId = params.callingUser.uid || (params.callingUser as any).id || "admin";
+  leave.status = params.decision === "APPROVE" ? "APPROVED" : "REJECTED";
+  leave.decidedBy = adminId;
+  leave.decidedAt = Date.now();
+  leave.note = params.note?.trim() || undefined;
+
+  logAuditAction(store, {
+    userId: adminId,
+    userEmailCache: params.callingUser.email || params.callingUser.displayName || "Super Admin",
+    action: "LEAVE_DECIDE",
+    entityType: "leaveRecords",
+    entityId: leave.id,
+    after: { status: leave.status, decision: params.decision, note: params.note },
+    reason: `${params.decision === "APPROVE" ? "Approved" : "Rejected"} leave request ${leave.id}`,
+  });
+
+  saveLocalStore(store);
+  return leave;
+}
+
+export function getLeaveRecords(
+  employeeId?: string,
+  callingUser?: UserProfile
+): LeaveRecord[] {
+  const store = loadLocalStore();
+  if (callingUser && callingUser.role === "CASHIER") {
+    const userId = callingUser.uid || (callingUser as any).id || "user";
+    const linkedEmp = store.employees.find(
+      (e) => e.userId === userId || (callingUser as any).linkedEmployeeId === e.id
+    );
+    if (!linkedEmp) return [];
+    return store.leaveRecords.filter((l) => l.employeeId === linkedEmp.id);
+  }
+
+  return store.leaveRecords
+    .filter((l) => !employeeId || l.employeeId === employeeId)
+    .sort((a, b) => b.createdAt - a.createdAt);
 }

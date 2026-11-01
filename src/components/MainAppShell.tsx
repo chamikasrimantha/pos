@@ -27,6 +27,7 @@ import { ReportsView } from "@/components/reports/ReportsView";
 import { AdminView } from "@/components/admin/AdminView";
 import { InvoicesView } from "@/components/invoices/InvoicesView";
 import { CustomersView } from "@/components/customers/CustomersView";
+import { EmployeesView } from "@/components/employees/EmployeesView";
 import { DayEndStatusView } from "@/components/admin/DayEndStatusView";
 
 export function MainAppShell() {
@@ -173,6 +174,7 @@ export function MainAppShell() {
           {activeView === "products" && <ProductsMasterView />}
           {activeView === "purchases" && <PurchasesView />}
           {activeView === "suppliers" && <SuppliersView />}
+          {activeView === "employees" && <EmployeesView />}
           {activeView === "reports" && <ReportsView />}
           {activeView === "dayEndStatus" && <DayEndStatusView />}
           {activeView === "admin" && <AdminView />}

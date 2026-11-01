@@ -683,6 +683,111 @@ export interface DailyCashSummary {
   cashierBreakdowns?: DailyCashSummary[];
 }
 
+// ==========================================
+// WP9. EMPLOYEES, WAGES, PAYROLL & LEAVE
+// ==========================================
+export type EmployeeStatus = "ACTIVE" | "LEFT";
+
+export interface Employee {
+  id: string;
+  name: string;
+  phone: string;
+  designation: string;
+  branchId: string; // shopId: "rightway" | "mega"
+  joinDate: number;
+  leaveDate?: number | null;
+  status: EmployeeStatus;
+  monthlySalary: number; // current effective monthly salary
+  dailyWageDefault?: number;
+  userId?: string | null; // linked cashier UserProfile.uid
+  customerAccountId?: string | null; // linked Customer.id (type = STAFF)
+  notes?: string;
+  createdAt: number;
+}
+
+export interface SalaryHistory {
+  id: string;
+  employeeId: string;
+  monthlySalary: number;
+  effectiveFrom: string; // "YYYY-MM"
+  effectiveDate: number;
+  createdAt: number;
+  reason?: string;
+}
+
+export type EmployeePaymentType = "DAILY_WAGE" | "SALARY_PAYMENT" | "WAGE_REVERSAL";
+
+export interface EmployeePayment {
+  id: string;
+  employeeId: string;
+  month: string; // "YYYY-MM"
+  type: EmployeePaymentType;
+  amount: number;
+  date: number;
+  method: "CASH" | "BANK_TRANSFER";
+  note?: string;
+  createdBy: string;
+  reversalOfId?: string | null;
+  createdAt: number;
+}
+
+export type LeaveType = "ANNUAL" | "SICK" | "CASUAL" | "UNPAID" | "OFF_DAY" | "HALF_DAY";
+export type LeaveStatus = "REQUESTED" | "APPROVED" | "REJECTED" | "CANCELLED";
+
+export interface LeaveRecord {
+  id: string;
+  employeeId: string;
+  type: LeaveType;
+  fromDate: string; // "YYYY-MM-DD"
+  toDate: string; // "YYYY-MM-DD"
+  days: number; // 0.5, 1, 2, ...
+  status: LeaveStatus;
+  requestedBy: string; // userId or employeeId
+  decidedBy?: string | null;
+  decidedAt?: number | null;
+  reason?: string;
+  note?: string;
+  createdAt: number;
+}
+
+export type PayrollMonthStatus = "OPEN" | "FINALISED" | "PAID";
+
+export interface PayrollDeduction {
+  title: string;
+  amount: number;
+  note?: string;
+}
+
+export interface PayrollMonth {
+  id: string; // `${employeeId}_${month}`
+  employeeId: string;
+  month: string; // "YYYY-MM"
+  status: PayrollMonthStatus;
+  effectiveMonthlySalary: number;
+  proRatedSalary: number;
+  dailyWagesPaid: number;
+  staffCreditOutstanding: number;
+  staffCreditRecovered: number;
+  paidLeaveDays: number;
+  unpaidLeaveDays: number;
+  leaveDeduction: number;
+  otherDeductions: PayrollDeduction[];
+  totalDeductions: number;
+  netPayable: number;
+  isOverpaid: boolean;
+  overpaidAmount: number;
+  finalisedAt?: number | null;
+  finalisedBy?: string | null;
+  paidAt?: number | null;
+  paidMethod?: "CASH" | "BANK_TRANSFER" | null;
+  paymentReference?: string | null;
+  reopenedAt?: number | null;
+  reopenedBy?: string | null;
+  reopenReason?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type ErrorCode =
   | "AUTH_REQUIRED"
   | "OUTLET_NOT_ALLOWED"

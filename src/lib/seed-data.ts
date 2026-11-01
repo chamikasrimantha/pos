@@ -18,6 +18,11 @@ import {
   CustomerLedgerEntry,
   CustomerPaymentReceipt,
   CashAdvanceReceipt,
+  Employee,
+  SalaryHistory,
+  EmployeePayment,
+  LeaveRecord,
+  PayrollMonth,
 } from "@/types";
 
 export const DEFAULT_SETTINGS: SystemSettings = {
@@ -1041,5 +1046,39 @@ export const SEED_CUSTOMERS: Customer[] = [
 export const SEED_CUSTOMER_LEDGER: CustomerLedgerEntry[] = [];
 export const SEED_CUSTOMER_PAYMENTS: CustomerPaymentReceipt[] = [];
 export const SEED_CASH_ADVANCES: CashAdvanceReceipt[] = [];
+
+export const SEED_EMPLOYEES: Employee[] = [
+  {
+    id: "emp_kamal_silva",
+    name: "Kamal Silva",
+    phone: "0719876543",
+    designation: "Senior Cashier",
+    branchId: "mega",
+    joinDate: new Date("2026-01-01T00:00:00+05:30").getTime(),
+    status: "ACTIVE",
+    monthlySalary: 60000,
+    dailyWageDefault: 1500,
+    userId: "cashier_mega",
+    customerAccountId: "cust_kamal_silva",
+    notes: "Mega Shoes Cashier",
+    createdAt: new Date("2026-01-01T00:00:00+05:30").getTime(),
+  },
+  {
+    id: "emp_nadeeka_silva",
+    name: "Nadeeka Silva",
+    phone: "0771122334",
+    designation: "Store Cashier",
+    branchId: "rightway",
+    joinDate: new Date("2026-03-01T00:00:00+05:30").getTime(),
+    status: "ACTIVE",
+    monthlySalary: 55000,
+    dailyWageDefault: 1200,
+    userId: "cashier_rightway",
+    customerAccountId: null,
+    notes: "RightWay Shoes Cashier",
+    createdAt: new Date("2026-03-01T00:00:00+05:30").getTime(),
+  },
+];
+
 
 
