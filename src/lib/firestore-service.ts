@@ -46,6 +46,14 @@ import {
   StockCountLine,
   SystemSettings,
   ERROR_MESSAGES,
+  Customer,
+  CustomerType,
+  CustomerLedgerEntry,
+  CustomerLedgerEntryType,
+  CustomerPaymentReceipt,
+  CashAdvanceReceipt,
+  SettledInvoiceRecord,
+  PaymentStatus,
 } from "@/types";
 import {
   SEED_SHOPS,
@@ -61,8 +69,13 @@ import {
   DEFAULT_SETTINGS,
   SEED_SALES,
   SEED_SALE_ITEMS,
+  SEED_CUSTOMERS,
+  SEED_CUSTOMER_LEDGER,
+  SEED_CUSTOMER_PAYMENTS,
+  SEED_CASH_ADVANCES,
 } from "./seed-data";
 import { computeDailyCashSummary } from "./daily-cash-math";
+import { can } from "./permissions";
 import {
   getColomboDayRange,
   getColomboMonthRange,
@@ -98,6 +111,10 @@ interface LocalStoreState {
   payments: SupplierPayment[];
   stockCounts: StockCount[];
   auditLogs: AuditLog[];
+  customers: Customer[];
+  customerLedger: CustomerLedgerEntry[];
+  customerPayments: CustomerPaymentReceipt[];
+  cashAdvances: CashAdvanceReceipt[];
   settings: SystemSettings;
   counters: Record<string, number>;
 }
@@ -133,6 +150,10 @@ function getInitialStore(): LocalStoreState {
     payments: [],
     stockCounts: [],
     auditLogs: [],
+    customers: [...SEED_CUSTOMERS],
+    customerLedger: [...SEED_CUSTOMER_LEDGER],
+    customerPayments: [...SEED_CUSTOMER_PAYMENTS],
+    cashAdvances: [...SEED_CASH_ADVANCES],
     settings: { ...DEFAULT_SETTINGS },
     counters: {
       "rightway_inv": 100,
@@ -145,6 +166,10 @@ function getInitialStore(): LocalStoreState {
       "mega_rep": 10,
       "rightway_cnt": 1,
       "mega_cnt": 1,
+      "rightway_pay": 1,
+      "mega_pay": 1,
+      "rightway_adv": 1,
+      "mega_adv": 1,
       "transfer": 15,
       "purchase": 10,
     },
@@ -216,6 +241,17 @@ function loadLocalStore(): LocalStoreState {
     if (!parsed.stockCounts) parsed.stockCounts = [];
     if (!parsed.cashMovements) parsed.cashMovements = [];
     if (!parsed.settings) parsed.settings = { ...DEFAULT_SETTINGS };
+    if (!parsed.customers || parsed.customers.length === 0) {
+      parsed.customers = [...SEED_CUSTOMERS];
+    }
+    if (!parsed.customerLedger) parsed.customerLedger = [...SEED_CUSTOMER_LEDGER];
+    if (!parsed.customerPayments) parsed.customerPayments = [...SEED_CUSTOMER_PAYMENTS];
+    if (!parsed.cashAdvances) parsed.cashAdvances = [...SEED_CASH_ADVANCES];
+    if (!parsed.counters) parsed.counters = {};
+    if (parsed.counters["rightway_pay"] === undefined) parsed.counters["rightway_pay"] = 1;
+    if (parsed.counters["mega_pay"] === undefined) parsed.counters["mega_pay"] = 1;
+    if (parsed.counters["rightway_adv"] === undefined) parsed.counters["rightway_adv"] = 1;
+    if (parsed.counters["mega_adv"] === undefined) parsed.counters["mega_adv"] = 1;
     if (!parsed.sales || parsed.sales.length === 0) {
       parsed.sales = [...SEED_SALES];
       parsed.saleItems = [...SEED_SALE_ITEMS];
@@ -780,6 +816,20 @@ export function getDailyCashSummary(params?: {
   timestamp?: number;
 }): DailyCashSummary {
   const store = loadLocalStore();
+  const customerPayments = (store.customerPayments || []).map((cp) => ({
+    amount: cp.amount,
+    paymentMethod: cp.method,
+    cashierId: cp.receivedBy,
+    shopId: cp.shopId,
+    createdAt: cp.createdAt,
+  }));
+  const cashAdvances = (store.cashAdvances || []).map((ca) => ({
+    amount: ca.amount,
+    cashierId: ca.issuedBy,
+    shopId: ca.shopId,
+    createdAt: ca.createdAt,
+  }));
+
   const summary = computeDailyCashSummary({
     shopId: params?.shopId,
     cashierId: params?.cashierId,
@@ -788,6 +838,8 @@ export function getDailyCashSummary(params?: {
     sales: store.sales,
     returns: store.returns,
     repairs: store.repairs,
+    customerPayments,
+    cashAdvances,
   });
 
   // If viewing across a branch or central (all branches) without cashier filter, compute per-cashier breakdowns
@@ -806,6 +858,8 @@ export function getDailyCashSummary(params?: {
         sales: store.sales,
         returns: store.returns,
         repairs: store.repairs,
+        customerPayments,
+        cashAdvances,
       });
       breakdowns.push(cSummary);
     }
@@ -823,6 +877,7 @@ export async function completeSale(params: {
   cashierId: string;
   cashierName: string;
   shiftId?: string;
+  customerId?: string;
   customerName?: string;
   customerPhone?: string;
   items: {
@@ -896,7 +951,61 @@ export async function completeSale(params: {
     }
   }
 
-  // 4. Generate sequential invoice number
+  // 4. Validate Credit Sales & Customer Limit (Section 5.2 / Acceptance C1, C2, C4)
+  const creditPaymentEntry = params.payments.find((p) => p.method === "CREDIT");
+  const isCreditSale = !!creditPaymentEntry && creditPaymentEntry.amount > 0;
+
+  let customerId = params.customerId;
+  let customerName = params.customerName;
+  let customerPhone = params.customerPhone;
+  let amountPaid = params.total;
+  let balanceDue = 0;
+  let paymentStatus: PaymentStatus = "PAID";
+
+  if (isCreditSale) {
+    if (!customerId) {
+      throw new Error("A customer is required for credit sales.");
+    }
+    const customer = store.customers.find((c) => c.id === customerId);
+    if (!customer) {
+      throw new Error("Customer not found.");
+    }
+    if (!customer.active) {
+      throw new Error("Selected customer account is inactive.");
+    }
+
+    customerId = customer.id;
+    customerName = customer.name;
+    customerPhone = customer.phone;
+
+    // Derived current balance from customer ledger (sum of debits minus credits)
+    const customerEntries = (store.customerLedger || []).filter((e) => e.customerId === customer.id);
+    const currentBalance = customerEntries.reduce((bal, e) => {
+      if (e.direction === "DEBIT") return bal + e.amount;
+      if (e.direction === "CREDIT") return bal - e.amount;
+      return bal;
+    }, 0);
+
+    const creditAmount = creditPaymentEntry.amount;
+
+    if (customer.creditLimit && customer.creditLimit > 0) {
+      if (currentBalance + creditAmount > customer.creditLimit) {
+        throw new Error("Credit limit reached");
+      }
+    }
+
+    amountPaid = Math.max(0, params.total - creditAmount);
+    balanceDue = creditAmount;
+    paymentStatus = amountPaid === 0 ? "CREDIT" : balanceDue > 0 ? "PARTIALLY_PAID" : "PAID";
+  } else if (customerId) {
+    const customer = store.customers.find((c) => c.id === customerId);
+    if (customer) {
+      customerName = customer.name;
+      customerPhone = customer.phone;
+    }
+  }
+
+  // 5. Generate sequential invoice number
   const shop = store.shops.find((s) => s.id === params.shopId);
   const invPrefix = shop?.invoicePrefix || (params.shopId === "rightway" ? "RW-INV" : "MG-INV");
   const invoiceNumber = getNextSequentialNumber(invPrefix, `${params.shopId}_inv`);
@@ -909,12 +1018,16 @@ export async function completeSale(params: {
     cashierId: params.cashierId,
     cashierNameCache: params.cashierName,
     shiftId: params.shiftId,
-    customerName: params.customerName || undefined,
-    customerPhone: params.customerPhone || undefined,
+    customerId,
+    customerName: customerName || undefined,
+    customerPhone: customerPhone || undefined,
     subtotal: params.subtotal,
     discount: params.discount,
     taxAmount: params.taxAmount,
     total: params.total,
+    amountPaid,
+    balanceDue,
+    paymentStatus,
     payments: params.payments,
     amountReceived: params.amountReceived,
     changeGiven: params.changeGiven,
@@ -928,7 +1041,7 @@ export async function completeSale(params: {
 
   const createdItems: SaleItem[] = [];
 
-  // 5. Atomic inventory decrement & movement logging
+  // 6. Atomic inventory decrement & movement logging
   for (const item of params.items) {
     const invKey = `${params.shopId}_${item.variant.id}`;
     const beforeQty = store.inventory[invKey].quantityOnHand;
@@ -995,6 +1108,25 @@ export async function completeSale(params: {
     store.movements.push(movement);
   }
 
+  // 7. Write Customer Ledger Entry for Credit Sale (Section 5.3 / Acceptance C1)
+  if (isCreditSale && balanceDue > 0 && customerId) {
+    const ledgerEntry: CustomerLedgerEntry = {
+      id: `cled_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      customerId,
+      shopId: params.shopId,
+      type: "CREDIT_SALE",
+      amount: balanceDue,
+      direction: "DEBIT",
+      saleId,
+      referenceNumber: invoiceNumber,
+      method: "CREDIT",
+      note: `Credit sale invoice #${invoiceNumber}`,
+      createdBy: params.cashierId,
+      createdAt: Date.now(),
+    };
+    store.customerLedger.push(ledgerEntry);
+  }
+
   store.sales.push(createdSale);
   store.saleItems.push(...createdItems);
 
@@ -1031,7 +1163,8 @@ export interface InvoiceFilters {
   startDate?: number;
   endDate?: number;
   status?: "ALL" | "COMPLETED" | "PARTIALLY_RETURNED" | "FULLY_RETURNED" | "CANCELLED";
-  paymentMethod?: "ALL" | "CASH" | "CARD" | "BANK_TRANSFER";
+  paymentMethod?: "ALL" | "CASH" | "CARD" | "BANK_TRANSFER" | "CREDIT";
+  paymentStatus?: "ALL" | "PAID" | "PARTIALLY_PAID" | "CREDIT";
   shopId?: string;
   cashierId?: string;
 }
@@ -1108,9 +1241,12 @@ export function getInvoicesForUser(
     }
   }
 
-  // 4. Payment Method Filter
+  // 4. Payment Method & Status Filter (Section 5.7)
   if (filters.paymentMethod && filters.paymentMethod !== "ALL") {
     sales = sales.filter((s) => s.payments?.some((p) => p.method === filters.paymentMethod));
+  }
+  if (filters.paymentStatus && filters.paymentStatus !== "ALL") {
+    sales = sales.filter((s) => s.paymentStatus === filters.paymentStatus);
   }
 
   // 5. Search Filter (Partial invoice #, customer name, customer phone, exact total)
@@ -1323,11 +1459,36 @@ export async function processCustomerReturn(params: {
     exchangeSaleId = `exc_sale_${Date.now()}`;
   }
 
-  // Update original sale returnStatus
+  // Update original sale returnStatus & credit balance (Section 5.6 / Acceptance C5)
   const origSale = store.sales.find((s) => s.id === params.originalSale.id);
   if (origSale) {
     origSale.returnedAmount = (origSale.returnedAmount || 0) + subtotalRefund;
     origSale.returnStatus = origSale.returnedAmount >= origSale.total ? "FULLY_RETURNED" : "PARTIALLY_RETURNED";
+
+    // If the returned invoice still has a balance due, the refund first reduces the unpaid balance
+    if (origSale.balanceDue && origSale.balanceDue > 0) {
+      const balanceReduction = Math.min(origSale.balanceDue, netRefund);
+      origSale.balanceDue -= balanceReduction;
+      origSale.paymentStatus = origSale.balanceDue === 0 ? "PAID" : "PARTIALLY_PAID";
+      netRefund -= balanceReduction;
+
+      if (origSale.customerId) {
+        store.customerLedger.push({
+          id: `cled_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+          customerId: origSale.customerId,
+          shopId: params.shopId,
+          type: "RETURN_ADJUSTMENT",
+          amount: balanceReduction,
+          direction: "CREDIT",
+          saleId: origSale.id,
+          referenceNumber: returnNumber,
+          method: "CREDIT",
+          note: `Return balance adjustment against invoice #${origSale.invoiceNumber}`,
+          createdBy: params.cashierId,
+          createdAt: Date.now(),
+        });
+      }
+    }
   }
 
   const returnRecord: CustomerReturn = {
@@ -1371,6 +1532,522 @@ export async function processCustomerReturn(params: {
 
   return returnRecord;
 }
+
+// ==========================================
+// 6B. CUSTOMERS, CREDIT & LEDGER MANAGEMENT (WP5)
+// ==========================================
+
+export function getCustomers(query?: string, activeOnly: boolean = false): Customer[] {
+  const store = loadLocalStore();
+  let list = store.customers || [];
+  if (activeOnly) {
+    list = list.filter((c) => c.active);
+  }
+  if (query && query.trim()) {
+    const q = query.toLowerCase().trim();
+    list = list.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.phone.toLowerCase().includes(q) ||
+        (c.address && c.address.toLowerCase().includes(q)) ||
+        (c.notes && c.notes.toLowerCase().includes(q))
+    );
+  }
+  return list.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function getCustomerById(id: string): Customer | undefined {
+  const store = loadLocalStore();
+  return (store.customers || []).find((c) => c.id === id);
+}
+
+export function getCustomerByPhone(phone: string): Customer | undefined {
+  const store = loadLocalStore();
+  const clean = phone.trim().toLowerCase();
+  return (store.customers || []).find((c) => c.phone.trim().toLowerCase() === clean);
+}
+
+export async function createCustomer(input: {
+  name: string;
+  phone: string;
+  type: CustomerType;
+  employeeId?: string;
+  address?: string;
+  creditLimit?: number;
+  notes?: string;
+  shopId?: string;
+  active?: boolean;
+  createdBy: string;
+}): Promise<Customer> {
+  const store = loadLocalStore();
+  const cleanPhone = input.phone.trim();
+
+  // Validate phone uniqueness
+  const existing = (store.customers || []).find(
+    (c) => c.phone.trim().toLowerCase() === cleanPhone.toLowerCase()
+  );
+  if (existing) {
+    throw new Error(`A customer with phone number ${cleanPhone} already exists (${existing.name}).`);
+  }
+
+  const customerId = `cust_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const newCustomer: Customer = {
+    id: customerId,
+    name: input.name.trim(),
+    phone: cleanPhone,
+    type: input.type || "REGULAR",
+    employeeId: input.employeeId?.trim() || undefined,
+    address: input.address?.trim() || undefined,
+    creditLimit: input.creditLimit !== undefined ? Number(input.creditLimit) : undefined,
+    notes: input.notes?.trim() || undefined,
+    active: input.active !== undefined ? input.active : true,
+    createdBy: input.createdBy,
+    createdAt: Date.now(),
+  };
+
+  if (!store.customers) store.customers = [];
+  store.customers.push(newCustomer);
+
+  logAuditAction(store, {
+    userId: input.createdBy,
+    userEmailCache: "Staff",
+    action: "CUSTOMER_CREATE",
+    entityType: "customers",
+    entityId: customerId,
+    after: newCustomer,
+    reason: `Created ${newCustomer.type} customer: ${newCustomer.name}`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await setDoc(doc(db, "customers", customerId), newCustomer);
+  } catch (e) {
+    console.warn("Firestore sync customer create error:", e);
+  }
+
+  return newCustomer;
+}
+
+export async function updateCustomer(
+  id: string,
+  updates: Partial<Customer>,
+  userId: string
+): Promise<Customer> {
+  const store = loadLocalStore();
+  const customer = (store.customers || []).find((c) => c.id === id);
+  if (!customer) throw new Error("Customer not found.");
+
+  const callingUser = store.users.find((u) => u.uid === userId);
+
+  // If changing credit limit, enforce customers.manage permission (Super Admin only)
+  if (updates.creditLimit !== undefined && updates.creditLimit !== customer.creditLimit) {
+    if (!callingUser || !can(callingUser, "customers.manage")) {
+      throw new Error("Only Super Admin can modify credit limits.");
+    }
+  }
+
+  // If updating phone, check uniqueness
+  if (updates.phone && updates.phone.trim().toLowerCase() !== customer.phone.toLowerCase()) {
+    const cleanPhone = updates.phone.trim().toLowerCase();
+    const duplicate = (store.customers || []).find(
+      (c) => c.id !== id && c.phone.trim().toLowerCase() === cleanPhone
+    );
+    if (duplicate) {
+      throw new Error(`Another customer with phone ${updates.phone} already exists (${duplicate.name}).`);
+    }
+  }
+
+  const before = { ...customer };
+  Object.assign(customer, {
+    ...updates,
+    updatedAt: Date.now(),
+  });
+
+  logAuditAction(store, {
+    userId,
+    userEmailCache: callingUser?.displayName || "Staff",
+    action: "CUSTOMER_UPDATE",
+    entityType: "customers",
+    entityId: id,
+    before,
+    after: customer,
+    reason: `Updated customer details for ${customer.name}`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await updateDoc(doc(db, "customers", id), customer);
+  } catch (e) {
+    console.warn("Firestore sync customer update error:", e);
+  }
+
+  return customer;
+}
+
+export function getCustomerLedger(customerId: string): CustomerLedgerEntry[] {
+  const store = loadLocalStore();
+  return (store.customerLedger || [])
+    .filter((e) => e.customerId === customerId)
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * Derived Customer Balance: Strictly sum of DEBITs minus sum of CREDITs
+ * Acceptance C7: Balance equals sum of ledger entries.
+ */
+export function getCustomerBalance(customerId: string): number {
+  const store = loadLocalStore();
+  const entries = (store.customerLedger || []).filter((e) => e.customerId === customerId);
+  return entries.reduce((bal, e) => {
+    if (e.direction === "DEBIT") return bal + e.amount;
+    if (e.direction === "CREDIT") return bal - e.amount;
+    return bal;
+  }, 0);
+}
+
+export function getCustomerCreditInvoices(customerId: string): Sale[] {
+  const store = loadLocalStore();
+  return (store.sales || [])
+    .filter(
+      (s) =>
+        s.customerId === customerId &&
+        s.balanceDue > 0 &&
+        s.status === "COMPLETED"
+    )
+    .sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export function getCustomerAgedBreakdown(customerId: string): {
+  d30: number;
+  d60: number;
+  d90: number;
+  d90Plus: number;
+  total: number;
+} {
+  const store = loadLocalStore();
+  const unpaidSales = (store.sales || []).filter(
+    (s) => s.customerId === customerId && s.balanceDue > 0 && s.status === "COMPLETED"
+  );
+
+  const now = Date.now();
+  let d30 = 0;
+  let d60 = 0;
+  let d90 = 0;
+  let d90Plus = 0;
+
+  for (const s of unpaidSales) {
+    const days = Math.floor((now - s.createdAt) / 86400000);
+    if (days <= 30) {
+      d30 += s.balanceDue;
+    } else if (days <= 60) {
+      d60 += s.balanceDue;
+    } else if (days <= 90) {
+      d90 += s.balanceDue;
+    } else {
+      d90Plus += s.balanceDue;
+    }
+  }
+
+  const total = d30 + d60 + d90 + d90Plus;
+  return { d30, d60, d90, d90Plus, total };
+}
+
+/**
+ * Receives customer payment and settles oldest unpaid credit invoices first (FIFO).
+ * Section 5.4 / Acceptance C3
+ */
+export async function receiveCustomerPayment(params: {
+  customerId: string;
+  shopId: string;
+  amount: number;
+  method: "CASH" | "CARD" | "BANK_TRANSFER";
+  reference?: string;
+  note?: string;
+  receivedBy: string;
+  receivedByName: string;
+}): Promise<CustomerPaymentReceipt> {
+  const store = loadLocalStore();
+  const caller = store.users.find((u) => u.uid === params.receivedBy);
+  if (caller && !can(caller, "customers.payment.receive")) {
+    throw new Error("You do not have permission to receive customer payments.");
+  }
+
+  if (params.amount <= 0) {
+    throw new Error("Payment amount must be greater than zero.");
+  }
+
+  const customer = (store.customers || []).find((c) => c.id === params.customerId);
+  if (!customer) {
+    throw new Error("Customer not found.");
+  }
+
+  const shop = store.shops.find((s) => s.id === params.shopId);
+  const payPrefix = shop?.code ? `${shop.code}-PAY` : params.shopId === "rightway" ? "RW-PAY" : "MG-PAY";
+  const paymentNumber = getNextSequentialNumber(payPrefix, `${params.shopId}_pay`);
+
+  // FIFO Allocation against oldest unpaid invoices
+  const unpaidSales = (store.sales || [])
+    .filter((s) => s.customerId === params.customerId && s.balanceDue > 0 && s.status === "COMPLETED")
+    .sort((a, b) => a.createdAt - b.createdAt);
+
+  let unallocated = params.amount;
+  const settledInvoices: SettledInvoiceRecord[] = [];
+
+  for (const sale of unpaidSales) {
+    if (unallocated <= 0) break;
+    const applied = Math.min(unallocated, sale.balanceDue);
+    sale.amountPaid += applied;
+    sale.balanceDue -= applied;
+    sale.paymentStatus = sale.balanceDue === 0 ? "PAID" : "PARTIALLY_PAID";
+    unallocated -= applied;
+
+    settledInvoices.push({
+      saleId: sale.id,
+      invoiceNumber: sale.invoiceNumber,
+      amountApplied: applied,
+      balanceRemaining: sale.balanceDue,
+    });
+  }
+
+  // Append Payment Received to Customer Ledger (Credit decreases debt)
+  const ledgerEntry: CustomerLedgerEntry = {
+    id: `cled_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    customerId: customer.id,
+    shopId: params.shopId,
+    type: "PAYMENT_RECEIVED",
+    amount: params.amount,
+    direction: "CREDIT",
+    referenceNumber: paymentNumber,
+    method: params.method,
+    note:
+      params.note ||
+      (settledInvoices.length > 0
+        ? `Settled invoices: ${settledInvoices.map((s) => s.invoiceNumber).join(", ")}`
+        : "Payment on account"),
+    createdBy: params.receivedBy,
+    createdAt: Date.now(),
+  };
+
+  if (!store.customerLedger) store.customerLedger = [];
+  store.customerLedger.push(ledgerEntry);
+
+  const receipt: CustomerPaymentReceipt = {
+    id: `payrec_${Date.now()}`,
+    paymentNumber,
+    customerId: customer.id,
+    customerName: customer.name,
+    customerPhone: customer.phone,
+    shopId: params.shopId,
+    amount: params.amount,
+    method: params.method,
+    reference: params.reference,
+    note: params.note,
+    settledInvoices,
+    receivedBy: params.receivedBy,
+    receivedByName: params.receivedByName,
+    createdAt: Date.now(),
+  };
+
+  if (!store.customerPayments) store.customerPayments = [];
+  store.customerPayments.push(receipt);
+
+  logAuditAction(store, {
+    userId: params.receivedBy,
+    userEmailCache: params.receivedByName,
+    action: "CUSTOMER_PAYMENT_RECEIVE",
+    entityType: "customerPayments",
+    entityId: receipt.id,
+    shopId: params.shopId,
+    after: receipt,
+    reason: `Received payment ${paymentNumber} of Rs. ${params.amount} from ${customer.name}`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await setDoc(doc(db, "customerPayments", receipt.id), receipt);
+  } catch (e) {
+    console.warn("Firestore sync payment receipt error:", e);
+  }
+
+  return receipt;
+}
+
+/**
+ * Issues cash advance (credit as cash) to staff or customer.
+ * Super Admin only! (Section 5.5 / Acceptance C6)
+ */
+export async function issueCashAdvance(params: {
+  customerId: string;
+  shopId: string;
+  amount: number;
+  date?: number;
+  note?: string;
+  issuedBy: string;
+  issuedByName: string;
+}): Promise<CashAdvanceReceipt> {
+  const store = loadLocalStore();
+  const caller = store.users.find((u) => u.uid === params.issuedBy);
+  if (!caller || !can(caller, "customers.cash_advance")) {
+    throw new Error("Only Super Admin can issue cash advances.");
+  }
+
+  if (params.amount <= 0) {
+    throw new Error("Advance amount must be greater than zero.");
+  }
+
+  const customer = (store.customers || []).find((c) => c.id === params.customerId);
+  if (!customer) {
+    throw new Error("Customer not found.");
+  }
+
+  const shop = store.shops.find((s) => s.id === params.shopId);
+  const advPrefix = shop?.code ? `${shop.code}-ADV` : params.shopId === "rightway" ? "RW-ADV" : "MG-ADV";
+  const voucherNumber = getNextSequentialNumber(advPrefix, `${params.shopId}_adv`);
+
+  // Debit increases customer balance (debt)
+  const ledgerEntry: CustomerLedgerEntry = {
+    id: `cled_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    customerId: customer.id,
+    shopId: params.shopId,
+    type: "CASH_ADVANCE",
+    amount: params.amount,
+    direction: "DEBIT",
+    referenceNumber: voucherNumber,
+    method: "CASH",
+    note: params.note || "Cash advance issued",
+    createdBy: params.issuedBy,
+    createdAt: params.date || Date.now(),
+  };
+
+  if (!store.customerLedger) store.customerLedger = [];
+  store.customerLedger.push(ledgerEntry);
+
+  const voucher: CashAdvanceReceipt = {
+    id: `advrec_${Date.now()}`,
+    voucherNumber,
+    customerId: customer.id,
+    customerName: customer.name,
+    customerPhone: customer.phone,
+    shopId: params.shopId,
+    amount: params.amount,
+    date: params.date || Date.now(),
+    note: params.note,
+    issuedBy: params.issuedBy,
+    issuedByName: params.issuedByName,
+    createdAt: Date.now(),
+  };
+
+  if (!store.cashAdvances) store.cashAdvances = [];
+  store.cashAdvances.push(voucher);
+
+  logAuditAction(store, {
+    userId: params.issuedBy,
+    userEmailCache: params.issuedByName,
+    action: "CUSTOMER_CASH_ADVANCE",
+    entityType: "cashAdvances",
+    entityId: voucher.id,
+    shopId: params.shopId,
+    after: voucher,
+    reason: `Issued cash advance ${voucherNumber} of Rs. ${params.amount} to ${customer.name}`,
+  });
+
+  saveLocalStore(store);
+
+  try {
+    await setDoc(doc(db, "cashAdvances", voucher.id), voucher);
+  } catch (e) {
+    console.warn("Firestore sync cash advance error:", e);
+  }
+
+  return voucher;
+}
+
+/**
+ * Adjust or write-off customer balance.
+ * Super Admin only! (Section 5.3 / Acceptance C6)
+ */
+export async function adjustCustomerBalance(params: {
+  customerId: string;
+  shopId: string;
+  amount: number;
+  direction: "DEBIT" | "CREDIT";
+  reason: string;
+  userId: string;
+  isWriteOff?: boolean;
+}): Promise<void> {
+  const store = loadLocalStore();
+  const caller = store.users.find((u) => u.uid === params.userId);
+  if (!caller || !can(caller, "customers.manage")) {
+    throw new Error("Only Super Admin can adjust or write off customer balances.");
+  }
+
+  if (params.amount <= 0) {
+    throw new Error("Adjustment amount must be greater than zero.");
+  }
+
+  const customer = (store.customers || []).find((c) => c.id === params.customerId);
+  if (!customer) {
+    throw new Error("Customer not found.");
+  }
+
+  const ledgerEntry: CustomerLedgerEntry = {
+    id: `cled_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    customerId: customer.id,
+    shopId: params.shopId,
+    type: params.isWriteOff ? "WRITE_OFF" : "ADJUSTMENT",
+    amount: params.amount,
+    direction: params.direction,
+    referenceNumber: params.isWriteOff ? "WRITE-OFF" : "ADJUST",
+    method: "ADJUSTMENT",
+    note: params.reason,
+    createdBy: params.userId,
+    createdAt: Date.now(),
+  };
+
+  if (!store.customerLedger) store.customerLedger = [];
+  store.customerLedger.push(ledgerEntry);
+
+  logAuditAction(store, {
+    userId: params.userId,
+    userEmailCache: caller.displayName,
+    action: params.isWriteOff ? "CUSTOMER_WRITE_OFF" : "CUSTOMER_ADJUSTMENT",
+    entityType: "customers",
+    entityId: customer.id,
+    shopId: params.shopId,
+    after: ledgerEntry,
+    reason: `${params.isWriteOff ? "Write-off" : "Balance adjustment"} of Rs. ${params.amount} (${params.direction}): ${params.reason}`,
+  });
+
+  saveLocalStore(store);
+}
+
+export function getAllOutstandingCreditCustomers(): {
+  customer: Customer;
+  balance: number;
+  aged: { d30: number; d60: number; d90: number; d90Plus: number; total: number };
+}[] {
+  const store = loadLocalStore();
+  const customers = store.customers || [];
+  const results: {
+    customer: Customer;
+    balance: number;
+    aged: { d30: number; d60: number; d90: number; d90Plus: number; total: number };
+  }[] = [];
+
+  for (const c of customers) {
+    const balance = getCustomerBalance(c.id);
+    if (balance > 0) {
+      const aged = getCustomerAgedBreakdown(c.id);
+      results.push({ customer: c, balance, aged });
+    }
+  }
+
+  return results.sort((a, b) => b.balance - a.balance);
+}
+
 
 // ==========================================
 // 7. SHOE REPAIR MANAGEMENT & INVOICING
@@ -2512,6 +3189,8 @@ export interface DailySalesData {
     cash: number;
     card: number;
     bankTransfer: number;
+    credit: number;
+    paymentsReceivedOnAccount: number;
   };
   repairIncome: number;
   dailyCashSummary?: DailyCashSummary;
@@ -2559,6 +3238,8 @@ export interface DayEndStatusData {
     cash: number;
     card: number;
     bankTransfer: number;
+    credit: number;
+    paymentsReceivedOnAccount: number;
   };
   repairIncome: number;
   firstInvoiceNumber: string | null;
@@ -2600,7 +3281,7 @@ export function getDailySalesData(
   let billDiscounts = 0;
   let refunds = 0;
   let netSales = 0;
-  const payments = { cash: 0, card: 0, bankTransfer: 0 };
+  const payments = { cash: 0, card: 0, bankTransfer: 0, credit: 0, paymentsReceivedOnAccount: 0 };
   const itemsBySaleId: Record<string, SaleItem[]> = {};
 
   daySales.forEach((sale) => {
@@ -2615,12 +3296,23 @@ export function getDailySalesData(
           if (p.method === "CASH") payments.cash += p.amount;
           else if (p.method === "CARD") payments.card += p.amount;
           else if (p.method === "BANK_TRANSFER") payments.bankTransfer += p.amount;
+          else if (p.method === "CREDIT") payments.credit += p.amount;
         });
       }
     }
 
     itemsBySaleId[sale.id] = store.saleItems.filter((it) => it.saleId === sale.id);
   });
+
+  // Calculate payments received on account today
+  const dayCustomerPayments = (store.customerPayments || []).filter(
+    (cp) =>
+      cp.createdAt >= startOfDay &&
+      cp.createdAt <= endOfDay &&
+      (shopId === "ALL" || !shopId || cp.shopId === shopId) &&
+      (!requestingUser || requestingUser.role === "SUPER_ADMIN" || cp.receivedBy === requestingUser.uid)
+  );
+  payments.paymentsReceivedOnAccount = dayCustomerPayments.reduce((sum, cp) => sum + cp.amount, 0);
 
   // Daily Cash Summary
   const dailyCashSummary = getDailyCashSummary({
@@ -2753,7 +3445,7 @@ export function getDayEndStatusData(
   let grossSales = 0;
   let refunds = 0;
   let netSales = 0;
-  const payments = { cash: 0, card: 0, bankTransfer: 0 };
+  const payments = { cash: 0, card: 0, bankTransfer: 0, credit: 0, paymentsReceivedOnAccount: 0 };
 
   daySales.forEach((sale) => {
     if (sale.status === "COMPLETED") {
@@ -2773,9 +3465,19 @@ export function getDayEndStatusData(
         if (p.method === "CASH") payments.cash += p.amount;
         else if (p.method === "CARD") payments.card += p.amount;
         else if (p.method === "BANK_TRANSFER") payments.bankTransfer += p.amount;
+        else if (p.method === "CREDIT") payments.credit += p.amount;
       });
     }
   });
+
+  // Calculate payments received on account today
+  const dayCustomerPayments = (store.customerPayments || []).filter(
+    (cp) =>
+      cp.createdAt >= startOfDay &&
+      cp.createdAt <= endOfDay &&
+      (shopId === "ALL" || !shopId || cp.shopId === shopId)
+  );
+  payments.paymentsReceivedOnAccount = dayCustomerPayments.reduce((sum, cp) => sum + cp.amount, 0);
 
   // Repair income for day
   let repairIncome = 0;

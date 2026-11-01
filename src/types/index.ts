@@ -371,13 +371,18 @@ export interface StockTransfer {
   sourceShopId: string;
   destinationShopId: string;
   status: TransferStatus;
+  mode?: "QUICK" | "FORMAL";
   items: StockTransferItem[];
   totalQuantity: number;
   dispatchedBy: string;
+  dispatchedByName?: string | null;
   dispatchedAt: number;
   receivedBy?: string | null;
+  receivedByName?: string | null;
   receivedAt?: number | null;
   discrepancyNotes?: string | null;
+  notes?: string | null;
+  idempotencyKey?: string | null;
 }
 
 export interface Supplier {

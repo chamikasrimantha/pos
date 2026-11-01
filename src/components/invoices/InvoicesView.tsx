@@ -55,7 +55,8 @@ export function InvoicesView({
   const [searchQuery, setSearchQuery] = useState("");
   const [dateRangePreset, setDateRangePreset] = useState<"TODAY" | "YESTERDAY" | "LAST_7" | "THIS_MONTH" | "ALL">("TODAY");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "COMPLETED" | "PARTIALLY_RETURNED" | "FULLY_RETURNED" | "CANCELLED">("ALL");
-  const [paymentFilter, setPaymentFilter] = useState<"ALL" | "CASH" | "CARD" | "BANK_TRANSFER">("ALL");
+  const [paymentFilter, setPaymentFilter] = useState<"ALL" | "CASH" | "CARD" | "BANK_TRANSFER" | "CREDIT">("ALL");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<"ALL" | "PAID" | "PARTIALLY_PAID" | "CREDIT">("ALL");
   const [shopFilter, setShopFilter] = useState<string>("ALL");
   const [cashierFilter, setCashierFilter] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
@@ -104,6 +105,7 @@ export function InvoicesView({
       endDate: dateRange.endDate,
       status: statusFilter,
       paymentMethod: paymentFilter,
+      paymentStatus: paymentStatusFilter,
       shopId: isSuperAdmin && shopFilter !== "ALL" ? shopFilter : undefined,
       cashierId: isSuperAdmin && cashierFilter !== "ALL" ? cashierFilter : undefined,
     };
@@ -115,6 +117,7 @@ export function InvoicesView({
     dateRange,
     statusFilter,
     paymentFilter,
+    paymentStatusFilter,
     shopFilter,
     cashierFilter,
     currentPage,
@@ -295,6 +298,26 @@ export function InvoicesView({
             <option value="CASH">Cash</option>
             <option value="CARD">Card</option>
             <option value="BANK_TRANSFER">Bank Transfer</option>
+            <option value="CREDIT">Credit</option>
+          </select>
+        </div>
+
+        {/* Payment Status (Section 5.7) */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <Coins size={14} color="var(--ink-3)" />
+          <select
+            className="input-field"
+            value={paymentStatusFilter}
+            onChange={(e) => {
+              setPaymentStatusFilter(e.target.value as any);
+              setCurrentPage(1);
+            }}
+            style={{ height: "36px", fontSize: "13px", padding: "4px 8px" }}
+          >
+            <option value="ALL">All Payment Statuses</option>
+            <option value="PAID">Paid</option>
+            <option value="PARTIALLY_PAID">Partially Paid</option>
+            <option value="CREDIT">Credit</option>
           </select>
         </div>
 

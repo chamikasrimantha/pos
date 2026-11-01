@@ -8,6 +8,10 @@ import {
   StockTransfer,
   Shop,
   ProductVariant,
+  Customer,
+  CustomerPaymentReceipt,
+  CashAdvanceReceipt,
+  CustomerLedgerEntry,
 } from "@/types";
 import { generateBarcodeSVG } from "./barcode-svg";
 
@@ -80,12 +84,21 @@ export function renderSaleReceiptHTML(
     margin: 4,
   });
 
+  const isCredit = sale.paymentStatus === "CREDIT" || (sale.balanceDue !== undefined && sale.balanceDue > 0);
+
   return `
     <div style="font-family: 'Courier New', Courier, monospace; width: 280px; margin: 0 auto; padding: 12px 8px; color: #000; line-height: 1.35; background: #fff;">
       ${
         isDuplicate
           ? `<div style="text-align: center; font-weight: 900; font-size: 13px; border: 2px dashed #000; padding: 4px; margin-bottom: 8px; letter-spacing: 1px;">
               *** DUPLICATE INVOICE ***
+            </div>`
+          : ""
+      }
+      ${
+        isCredit
+          ? `<div style="text-align: center; font-weight: 900; font-size: 14px; border: 2px solid #000; padding: 4px; margin-bottom: 8px; letter-spacing: 1px;">
+              *** CREDIT SALE ***
             </div>`
           : ""
       }
@@ -109,6 +122,7 @@ export function renderSaleReceiptHTML(
         </div>
         <div>Cashier: ${sale.cashierNameCache}</div>
         ${sale.customerName ? `<div>Customer: ${sale.customerName} (${sale.customerPhone || "-"})</div>` : ""}
+        ${isCredit && sale.paymentStatus ? `<div>Payment Status: <strong>${sale.paymentStatus}</strong></div>` : ""}
       </div>
 
       <!-- Items Table -->
@@ -146,6 +160,14 @@ export function renderSaleReceiptHTML(
           ${payments}
         </div>
         ${
+          isCredit
+            ? `<div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin-top: 4px; color: #b91c1c; border-top: 1px dashed #000; padding-top: 4px;">
+                <span>Balance Due:</span>
+                <span style="font-variant-numeric: tabular-nums;">${formatCurrency(sale.balanceDue || 0)}</span>
+              </div>`
+            : ""
+        }
+        ${
           sale.changeGiven && sale.changeGiven > 0
             ? `<div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 2px;">
                 <span>Change Given:</span>
@@ -159,6 +181,15 @@ export function renderSaleReceiptHTML(
       <div style="text-align: center; margin-top: 10px;">
         ${invoiceBarcodeSVG}
       </div>
+
+      <!-- Customer Signature line for Credit Sales (Section 5.7) -->
+      ${
+        isCredit
+          ? `<div style="margin-top: 26px; padding-top: 6px; border-top: 1px dashed #000; font-size: 11px;">
+              Customer Signature: _______________________
+            </div>`
+          : ""
+      }
 
       <!-- Footer Policy -->
       <div style="text-align: center; margin-top: 8px; font-size: 11px; white-space: pre-line; color: #222;">
@@ -1056,6 +1087,280 @@ export function renderDayEndStatusReportHTML(
           <div style="border-bottom: 1px solid #000; height: 35px;"></div>
           <div style="margin-top: 4px; font-weight: bold;">Super Admin Sign-off</div>
         </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── 8. CUSTOMER PAYMENT RECEIPT (80mm Thermal Slip) ─────────────────────────
+export function renderCustomerPaymentReceiptHTML(
+  receipt: CustomerPaymentReceipt,
+  shop: Shop,
+  currentBalance?: number
+): string {
+  const settledRows = (receipt.settledInvoices || [])
+    .map(
+      (inv) => `
+    <tr>
+      <td style="padding: 4px 0; font-size: 11px;">${inv.invoiceNumber}</td>
+      <td style="padding: 4px 0; text-align: right; font-variant-numeric: tabular-nums; font-size: 11px;">
+        ${formatCurrency(inv.amountApplied)}
+      </td>
+      <td style="padding: 4px 0; text-align: right; font-variant-numeric: tabular-nums; font-size: 11px;">
+        ${formatCurrency(inv.balanceRemaining)}
+      </td>
+    </tr>
+  `
+    )
+    .join("");
+
+  return `
+    <div style="font-family: 'Courier New', Courier, monospace; width: 280px; margin: 0 auto; padding: 12px 8px; color: #000; line-height: 1.35; background: #fff;">
+      <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px;">
+        <h2 style="margin: 0; font-size: 18px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase;">
+          ${shop.name}
+        </h2>
+        <div style="font-size: 11px; margin-top: 2px;">${shop.address}</div>
+        <div style="font-size: 11px;">Tel: ${shop.phone}</div>
+      </div>
+
+      <div style="text-align: center; font-weight: 900; font-size: 13px; border: 1px solid #000; padding: 3px; margin-bottom: 8px; letter-spacing: 0.5px;">
+        CUSTOMER PAYMENT RECEIPT
+      </div>
+
+      <div style="font-size: 12px; margin-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between;">
+          <span><strong>Receipt:</strong> ${receipt.paymentNumber}</span>
+          <span><strong>Branch:</strong> ${shop.code}</span>
+        </div>
+        <div>Date: ${formatDate(receipt.createdAt)}</div>
+        <div><strong>Customer:</strong> ${receipt.customerName}</div>
+        ${receipt.customerPhone ? `<div>Phone: ${receipt.customerPhone}</div>` : ""}
+        <div>Payment Method: <strong>${receipt.method}</strong></div>
+        ${receipt.reference ? `<div>Reference: ${receipt.reference}</div>` : ""}
+        <div>Received By: ${receipt.receivedByName}</div>
+      </div>
+
+      <div style="background: #f4f4f4; border: 1px solid #ccc; padding: 10px; text-align: center; margin: 10px 0;">
+        <div style="font-size: 11px; text-transform: uppercase; font-weight: bold; color: #555;">Amount Received</div>
+        <div style="font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums;">${formatCurrency(receipt.amount)}</div>
+      </div>
+
+      ${
+        receipt.settledInvoices && receipt.settledInvoices.length > 0
+          ? `
+        <div style="margin-top: 8px; border-top: 1px dashed #000; padding-top: 6px;">
+          <div style="font-size: 11px; font-weight: bold; text-transform: uppercase; margin-bottom: 4px;">Invoices Settled (FIFO):</div>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid #000; font-size: 10px; text-align: left;">
+                <th style="padding: 2px 0;">Invoice</th>
+                <th style="padding: 2px 0; text-align: right;">Applied</th>
+                <th style="padding: 2px 0; text-align: right;">Remaining</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${settledRows}
+            </tbody>
+          </table>
+        </div>
+      `
+          : ""
+      }
+
+      ${
+        currentBalance !== undefined
+          ? `
+        <div style="margin-top: 8px; border-top: 1px solid #000; padding-top: 6px; display: flex; justify-content: space-between; font-size: 13px; font-weight: bold;">
+          <span>Remaining Balance:</span>
+          <span style="font-variant-numeric: tabular-nums; color: ${currentBalance > 0 ? '#b91c1c' : '#166534'};">${formatCurrency(currentBalance)}</span>
+        </div>
+      `
+          : ""
+      }
+
+      ${receipt.note ? `<div style="font-size: 11px; color: #444; margin-top: 6px;">Note: ${receipt.note}</div>` : ""}
+
+      <div style="margin-top: 28px; padding-top: 6px; border-top: 1px dashed #000; display: flex; justify-content: space-between; font-size: 10px;">
+        <div style="text-align: center; width: 45%;">
+          <div style="border-bottom: 1px solid #000; height: 25px;"></div>
+          <div style="margin-top: 3px;">Cashier Signature</div>
+        </div>
+        <div style="text-align: center; width: 45%;">
+          <div style="border-bottom: 1px solid #000; height: 25px;"></div>
+          <div style="margin-top: 3px;">Customer Signature</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── 9. CASH ADVANCE VOUCHER (80mm Slip & A4 Format) ──────────────────────────
+export function renderCashAdvanceVoucherHTML(
+  voucher: CashAdvanceReceipt,
+  shop: Shop
+): string {
+  return `
+    <div style="font-family: 'Courier New', Courier, monospace; width: 280px; margin: 0 auto; padding: 12px 8px; color: #000; line-height: 1.35; background: #fff;">
+      <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px;">
+        <h2 style="margin: 0; font-size: 18px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase;">
+          ${shop.name}
+        </h2>
+        <div style="font-size: 11px; margin-top: 2px;">${shop.address}</div>
+        <div style="font-size: 11px;">Tel: ${shop.phone}</div>
+      </div>
+
+      <div style="text-align: center; font-weight: 900; font-size: 13px; border: 2px solid #000; padding: 4px; margin-bottom: 10px; letter-spacing: 0.5px;">
+        *** CASH ADVANCE VOUCHER ***
+      </div>
+
+      <div style="font-size: 12px; margin-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between;">
+          <span><strong>Voucher #:</strong> ${voucher.voucherNumber}</span>
+          <span><strong>Branch:</strong> ${shop.code}</span>
+        </div>
+        <div>Date: ${formatDate(voucher.date || voucher.createdAt)}</div>
+        <div style="margin-top: 4px;"><strong>Issued To:</strong> ${voucher.customerName}</div>
+        ${voucher.customerPhone ? `<div>Phone: ${voucher.customerPhone}</div>` : ""}
+        <div>Authorized By: ${voucher.issuedByName}</div>
+      </div>
+
+      <div style="background: #fef2f2; border: 1px solid #f87171; padding: 12px; text-align: center; margin: 12px 0;">
+        <div style="font-size: 11px; text-transform: uppercase; font-weight: bold; color: #991b1b;">Advance Cash Paid Out</div>
+        <div style="font-size: 26px; font-weight: 900; color: #991b1b; font-variant-numeric: tabular-nums; margin-top: 2px;">
+          ${formatCurrency(voucher.amount)}
+        </div>
+      </div>
+
+      ${voucher.note ? `<div style="font-size: 11px; margin: 6px 0;"><strong>Reason / Notes:</strong> ${voucher.note}</div>` : ""}
+
+      <div style="margin-top: 30px; padding-top: 6px; border-top: 1px dashed #000; display: flex; justify-content: space-between; font-size: 10px;">
+        <div style="text-align: center; width: 45%;">
+          <div style="border-bottom: 1px solid #000; height: 28px;"></div>
+          <div style="margin-top: 4px;">Authorized By (Admin)</div>
+        </div>
+        <div style="text-align: center; width: 45%;">
+          <div style="border-bottom: 1px solid #000; height: 28px;"></div>
+          <div style="margin-top: 4px;">Receiver Signature</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── 10. CUSTOMER STATEMENT (A4 Document Format) ──────────────────────────────
+export function renderCustomerStatementHTML(
+  customer: Customer,
+  ledger: CustomerLedgerEntry[],
+  aged: { d30: number; d60: number; d90: number; d90Plus: number; total: number },
+  shop: Shop
+): string {
+  let runningBal = 0;
+  const sortedLedger = [...ledger].sort((a, b) => a.createdAt - b.createdAt);
+  const rows = sortedLedger
+    .map((e) => {
+      const isDebit = e.direction === "DEBIT";
+      const debitStr = isDebit ? formatCurrency(e.amount) : "-";
+      const creditStr = !isDebit ? formatCurrency(e.amount) : "-";
+      runningBal = isDebit ? runningBal + e.amount : runningBal - e.amount;
+
+      return `
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 8px 10px;">${formatDate(e.createdAt)}</td>
+        <td style="padding: 8px 10px; font-weight: 600;">${e.type.replace(/_/g, " ")}</td>
+        <td style="padding: 8px 10px;">${e.referenceNumber || "-"}</td>
+        <td style="padding: 8px 10px; text-align: right; font-variant-numeric: tabular-nums;">${debitStr}</td>
+        <td style="padding: 8px 10px; text-align: right; font-variant-numeric: tabular-nums;">${creditStr}</td>
+        <td style="padding: 8px 10px; text-align: right; font-variant-numeric: tabular-nums; font-weight: bold;">${formatCurrency(runningBal)}</td>
+        <td style="padding: 8px 10px; color: #6b7280; font-size: 11px;">${e.note || "-"}</td>
+      </tr>
+    `;
+    })
+    .join("");
+
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 24px; color: #111; line-height: 1.4;">
+      <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 16px; margin-bottom: 20px;">
+        <div>
+          <h1 style="margin: 0; font-size: 24px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase;">
+            ${shop.name}
+          </h1>
+          <div style="font-size: 12px; margin-top: 4px; color: #4b5563;">${shop.address}</div>
+          <div style="font-size: 12px; color: #4b5563;">Tel: ${shop.phone}</div>
+        </div>
+        <div style="text-align: right;">
+          <h2 style="margin: 0; font-size: 20px; font-weight: 700; color: #1d4ed8;">STATEMENT OF ACCOUNT</h2>
+          <div style="font-size: 12px; margin-top: 4px;">Statement Date: ${formatDate(Date.now())}</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+        <div>
+          <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #6b7280;">Customer Account</div>
+          <div style="font-size: 18px; font-weight: 700; color: #111; margin-top: 2px;">${customer.name}</div>
+          <div style="font-size: 13px; color: #374151;">Phone: ${customer.phone}</div>
+          ${customer.address ? `<div style="font-size: 13px; color: #374151;">Address: ${customer.address}</div>` : ""}
+          <div style="font-size: 12px; margin-top: 4px;"><span style="background: #e0e7ff; color: #3730a3; padding: 2px 8px; border-radius: 4px; font-weight: 600;">${customer.type}</span></div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #6b7280;">Account Summary</div>
+          <div style="font-size: 22px; font-weight: 900; color: ${aged.total > 0 ? '#b91c1c' : '#166534'}; margin-top: 2px;">
+            ${formatCurrency(aged.total)}
+          </div>
+          <div style="font-size: 12px; color: #6b7280;">Current Outstanding Balance</div>
+          ${customer.creditLimit ? `<div style="font-size: 12px; color: #374151; margin-top: 4px;">Credit Limit: ${formatCurrency(customer.creditLimit)}</div>` : ""}
+        </div>
+      </div>
+
+      <!-- Aged Debt Breakdown -->
+      <div style="margin-bottom: 24px;">
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; text-transform: uppercase; color: #374151;">Aged Balance Breakdown</div>
+        <div style="display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; text-align: center;">
+          <div style="padding: 10px; background: #f9fafb; border-right: 1px solid #e5e7eb;">
+            <div style="font-size: 11px; color: #6b7280;">0 - 30 Days</div>
+            <div style="font-size: 14px; font-weight: 700; margin-top: 2px;">${formatCurrency(aged.d30)}</div>
+          </div>
+          <div style="padding: 10px; background: #f9fafb; border-right: 1px solid #e5e7eb;">
+            <div style="font-size: 11px; color: #6b7280;">31 - 60 Days</div>
+            <div style="font-size: 14px; font-weight: 700; margin-top: 2px;">${formatCurrency(aged.d60)}</div>
+          </div>
+          <div style="padding: 10px; background: #f9fafb; border-right: 1px solid #e5e7eb;">
+            <div style="font-size: 11px; color: #6b7280;">61 - 90 Days</div>
+            <div style="font-size: 14px; font-weight: 700; margin-top: 2px;">${formatCurrency(aged.d90)}</div>
+          </div>
+          <div style="padding: 10px; background: #fef2f2; border-right: 1px solid #e5e7eb;">
+            <div style="font-size: 11px; color: #b91c1c; font-weight: bold;">Over 90 Days</div>
+            <div style="font-size: 14px; font-weight: 700; color: #b91c1c; margin-top: 2px;">${formatCurrency(aged.d90Plus)}</div>
+          </div>
+          <div style="padding: 10px; background: #f3f4f6;">
+            <div style="font-size: 11px; color: #111; font-weight: bold;">Total Due</div>
+            <div style="font-size: 15px; font-weight: 900; margin-top: 2px;">${formatCurrency(aged.total)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ledger Transactions -->
+      <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; text-transform: uppercase; color: #374151;">Transaction History</div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px;">
+        <thead>
+          <tr style="background: #f3f4f6; border-top: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; text-align: left;">
+            <th style="padding: 8px 10px;">Date</th>
+            <th style="padding: 8px 10px;">Type</th>
+            <th style="padding: 8px 10px;">Ref #</th>
+            <th style="padding: 8px 10px; text-align: right;">Debit (Charges)</th>
+            <th style="padding: 8px 10px; text-align: right;">Credit (Payments)</th>
+            <th style="padding: 8px 10px; text-align: right;">Balance</th>
+            <th style="padding: 8px 10px;">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || '<tr><td colspan="7" style="padding: 16px; text-align: center; color: #9ca3af;">No transaction history found.</td></tr>'}
+        </tbody>
+      </table>
+
+      <div style="display: flex; justify-content: space-between; margin-top: 48px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280;">
+        <div>For queries regarding this statement, contact ${shop.phone}</div>
+        <div>Page 1 of 1</div>
       </div>
     </div>
   `;
