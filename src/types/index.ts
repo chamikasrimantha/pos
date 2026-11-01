@@ -463,12 +463,14 @@ export interface ShoeRepairOrder {
   notes?: string;
   statusHistory: RepairStatusHistory[];
   isWarranty?: boolean;
+  underWarranty?: boolean;
   warrantyBasis?: "STORE_INVOICE" | "MANUAL";
   warrantyInvoiceNumber?: string;
   warrantyCardNumber?: string;
   warrantyStatus?: "VERIFIED" | "UNVERIFIED" | "EXPIRED" | "NOT_FOUND";
   warrantyCoverageNote?: string;
   hasEstimate?: boolean;
+  estimateProvided?: boolean;
   needsReview?: boolean;
   reviewedBy?: string | null;
   reviewedAt?: number | null;
@@ -562,6 +564,9 @@ export interface Purchase {
   notes?: string;
   paymentMethod?: "CASH" | "CHEQUE" | "CREDIT" | "BANK_TRANSFER" | "PARTIAL";
   paidAmount?: number;
+  balanceDue?: number;
+  paymentStatus?: "PAID" | "PARTIALLY_PAID" | "UNPAID";
+  reviewStatus?: "OK" | "NEEDS_REVIEW" | "REVIEWED";
   chequeDetails?: {
     chequeNumber: string;
     bankName: string;

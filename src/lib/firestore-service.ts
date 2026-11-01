@@ -5779,8 +5779,8 @@ export function getReviewInboxItems(
         itemDescription: `${r.shoeBrand || ""} ${r.shoeModel || ""}`.trim() || "Item",
         warrantyCardNumber: r.warrantyCardNumber || "Manual Intake",
         branchName: shop?.name || r.shopId,
-        receivedBy: r.receivedBy,
-        receivedAt: r.receivedAt,
+        receivedBy: (r as any).receivedBy || r.intakeCashierId || "Cashier",
+        receivedAt: r.receivedAt || Date.now(),
       };
     });
   }

@@ -6,9 +6,7 @@ import {
   createQuickProduct,
   createSupplier,
   createPurchase,
-  createCheque,
   completeSale,
-  createQuickTransfer,
   createRepairOrder,
   getReviewInboxCounts,
   getReviewInboxItems,
@@ -17,7 +15,7 @@ import {
   getDayEndStatusData,
 } from "../firestore-service";
 import { hasPermission, isModuleVisible } from "../permissions";
-import { UserProfile, LocalStore } from "@/types";
+import { UserProfile, PriceOverrideItem } from "@/types";
 
 describe("WP10: Review Inbox and Reports (V1 - V4)", () => {
   const superAdmin: UserProfile = {
@@ -26,8 +24,7 @@ describe("WP10: Review Inbox and Reports (V1 - V4)", () => {
     displayName: "Super Administrator",
     role: "SUPER_ADMIN",
     active: true,
-    outlets: ["rightway", "mega"],
-    createdAt: Date.now(),
+    allowedShopIds: ["rightway", "mega"],
   };
 
   const cashier: UserProfile = {
@@ -36,9 +33,7 @@ describe("WP10: Review Inbox and Reports (V1 - V4)", () => {
     displayName: "Kamal Perera",
     role: "CASHIER",
     active: true,
-    outlets: ["rightway"],
-    defaultShopId: "rightway",
-    createdAt: Date.now(),
+    allowedShopIds: ["rightway"],
   };
 
   beforeEach(() => {
@@ -222,7 +217,7 @@ describe("WP10: Review Inbox and Reports (V1 - V4)", () => {
     });
 
     // 3. Query price overrides tab
-    const overrideItems = getReviewInboxItems(superAdmin, "priceOverrides");
+    const overrideItems = getReviewInboxItems(superAdmin, "priceOverrides") as any[];
     expect(overrideItems.length).toBeGreaterThanOrEqual(1);
 
     const item = overrideItems.find((o) => o.saleId === saleResult.sale.id);
@@ -235,10 +230,10 @@ describe("WP10: Review Inbox and Reports (V1 - V4)", () => {
     expect(item!.reason).toBe("Clearance discount for loyal customer");
 
     // 4. Test reduction filter
-    const highReductionItems = getReviewInboxItems(superAdmin, "priceOverrides", { minDiscountPercent: 25 });
+    const highReductionItems = getReviewInboxItems(superAdmin, "priceOverrides", { minDiscountPercent: 25 }) as any[];
     expect(highReductionItems.some((o) => o.saleId === saleResult.sale.id)).toBe(false);
 
-    const matchingReductionItems = getReviewInboxItems(superAdmin, "priceOverrides", { minDiscountPercent: 15 });
+    const matchingReductionItems = getReviewInboxItems(superAdmin, "priceOverrides", { minDiscountPercent: 15 }) as any[];
     expect(matchingReductionItems.some((o) => o.saleId === saleResult.sale.id)).toBe(true);
 
     // 5. Mark reviewed
@@ -249,7 +244,7 @@ describe("WP10: Review Inbox and Reports (V1 - V4)", () => {
       callingUser: superAdmin,
     });
 
-    const clearedOverrides = getReviewInboxItems(superAdmin, "priceOverrides");
+    const clearedOverrides = getReviewInboxItems(superAdmin, "priceOverrides") as any[];
     expect(clearedOverrides.some((o) => o.id === item!.id)).toBe(false);
   });
 
@@ -346,9 +341,10 @@ describe("WP10: Review Inbox and Reports (V1 - V4)", () => {
       id: custId,
       name: "Sunil Silva",
       phone: "0711122334",
-      customerType: "INDIVIDUAL",
+      type: "REGULAR",
       creditLimit: 20000,
       active: true,
+      createdBy: cashier.uid,
       createdAt: today,
     });
     saveLocalStore(store);
@@ -405,13 +401,14 @@ describe("WP10: Review Inbox and Reports (V1 - V4)", () => {
     const storeWithCust = loadLocalStore();
     storeWithCust.customerPayments.push({
       id: "cp_test_001",
-      customerAccountId: custId,
+      paymentNumber: "RW-PAY-000001",
+      customerId: custId,
+      customerName: "Sunil Silva",
       amount: 2000,
-      paymentMethod: "CASH",
-      receiptNumber: "RCPT-001",
+      method: "CASH",
       shopId: "rightway",
       receivedBy: cashier.uid,
-      receivedByNameCache: cashier.displayName,
+      receivedByName: cashier.displayName,
       createdAt: today,
       settledInvoices: [],
     });

@@ -187,6 +187,16 @@ export function PosView() {
   const allCategories = useMemo(() => getCategories(), [dataVersion]);
   const variants = useMemo(() => getVariants(), [dataVersion]);
   const inventoryList = useMemo(() => getInventoryForShop(activeShop.id), [activeShop.id, dataVersion]);
+  const otherShopId = activeShop.id === "rightway" ? "mega" : "rightway";
+  const otherInventoryList = useMemo(() => getInventoryForShop(otherShopId), [otherShopId, dataVersion]);
+
+  const otherStockMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    otherInventoryList.forEach((inv) => {
+      map[inv.variantId] = inv.quantityOnHand;
+    });
+    return map;
+  }, [otherInventoryList]);
 
   // Product map: productId -> Product
   const productMap = useMemo(() => {
@@ -205,21 +215,6 @@ export function PosView() {
     });
     return map;
   }, [inventoryList]);
-
-  const otherShop = useMemo(() => {
-    const allShops = getShops();
-    return allShops.find((s) => s.id !== activeShop.id);
-  }, [activeShop.id]);
-
-  const otherStockMap = useMemo(() => {
-    if (!otherShop) return {};
-    const otherInv = getInventoryForShop(otherShop.id);
-    const map: Record<string, number> = {};
-    otherInv.forEach((inv) => {
-      map[inv.variantId] = inv.quantityOnHand;
-    });
-    return map;
-  }, [otherShop, dataVersion]);
 
   // Categories list dynamically filtered by selected product type
   const categories = useMemo(() => {
