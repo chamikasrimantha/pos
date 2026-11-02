@@ -347,8 +347,9 @@ export function SuppliersView() {
               No transactions posted yet for {activeSupplier.name}. Inward a purchase bill to post credits.
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="pos-table">
+            <div className="pos-table-container">
+              <div className="pos-table-scroll">
+                <table className="pos-table">
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -387,20 +388,14 @@ export function SuppliersView() {
                 </tbody>
               </table>
             </div>
+          </div>
           )}
         </div>
       )}
 
       {/* TAB 3: CHEQUE REGISTER */}
       {activeTab === "CHEQUES" && (
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--line)",
-            borderRadius: "var(--radius-tile)",
-            overflow: "hidden",
-          }}
-        >
+        <div className="pos-table-container">
           <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
             <h3 style={{ fontSize: "16px", fontWeight: "600", color: "var(--ink)", margin: 0 }}>
               Cheque register & maturity tracking
@@ -412,7 +407,7 @@ export function SuppliersView() {
               No supplier cheques issued yet. Click &quot;Issue supplier cheque&quot; to log a payment cheque.
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div className="pos-table-scroll">
               <table className="pos-table">
                 <thead>
                   <tr>

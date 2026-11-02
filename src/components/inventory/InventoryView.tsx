@@ -621,16 +621,8 @@ export function InventoryView() {
           ) : (
             <>
               {/* Desktop Table View */}
-              <div
-                className="desktop-only"
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--line)",
-                  borderRadius: "var(--radius-tile)",
-                  overflow: "hidden",
-                }}
-              >
-                <div style={{ overflowX: "auto" }}>
+              <div className="desktop-only pos-table-container">
+                <div className="pos-table-scroll">
                   <table className="pos-table">
                     <thead>
                       <tr>
@@ -805,13 +797,13 @@ export function InventoryView() {
 
       {/* ── SUPER ADMIN TAB 1: CENTRAL STOCK TABLE ── */}
       {isSuperAdmin && activeTab === "CENTRAL_STOCK" && (
-        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
+        <div className="pos-table-container">
           {filteredCentralRows.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--ink-2)", fontSize: "14px" }}>
               No inventory rows found matching criteria.
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div className="pos-table-scroll">
               <table className="pos-table">
                 <thead>
                   <tr>
@@ -894,13 +886,13 @@ export function InventoryView() {
 
       {/* ── SUPER ADMIN TAB 2: STOCK MOVEMENTS AUDIT LOG ── */}
       {isSuperAdmin && activeTab === "MOVEMENTS" && (
-        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
+        <div className="pos-table-container">
           {movements.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--ink-3)", fontSize: "14px" }}>
               No stock movements recorded yet for this branch.
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div className="pos-table-scroll">
               <table className="pos-table">
                 <thead>
                   <tr>
@@ -1011,50 +1003,52 @@ export function InventoryView() {
               </div>
 
               {/* Counting Lines Table */}
-              <div style={{ maxHeight: "360px", overflowY: "auto", border: "1px solid var(--line)", borderRadius: "8px" }}>
-                <table className="pos-table">
-                  <thead>
-                    <tr>
-                      <th>Shoe model</th>
-                      <th>Color & Size</th>
-                      <th>Barcode</th>
-                      <th className="num" style={{ width: "160px" }}>Counted Pairs</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeCountSession.lines.map((l) => {
-                      const v = variants.find((variant) => variant.id === l.variantId);
-                      if (!v) return null;
-                      const countVal = countedQuantities[v.id] || 0;
-                      return (
-                        <tr key={v.id}>
-                          <td style={{ fontWeight: "700" }}>{v.productNameCache}</td>
-                          <td style={{ color: "var(--ink-2)" }}>{v.colorNameCache} - {v.sizeLabelCache}</td>
-                          <td style={{ fontVariantNumeric: "tabular-nums", color: "var(--ink-3)" }}>{v.barcode}</td>
-                          <td className="num">
-                            <input
-                              type="number"
-                              min="0"
-                              value={countVal}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value) || 0;
-                                setCountedQuantities((prev) => ({ ...prev, [v.id]: Math.max(0, val) }));
-                              }}
-                              className="pos-input"
-                              style={{ width: "80px", textAlign: "right", height: "36px" }}
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="pos-table-container" style={{ maxHeight: "380px" }}>
+                <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "380px", position: "relative" }}>
+                  <table className="pos-table pos-table-form">
+                    <thead>
+                      <tr>
+                        <th>Shoe model</th>
+                        <th>Color & Size</th>
+                        <th>Barcode</th>
+                        <th className="num" style={{ width: "160px" }}>Counted Pairs</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeCountSession.lines.map((l) => {
+                        const v = variants.find((variant) => variant.id === l.variantId);
+                        if (!v) return null;
+                        const countVal = countedQuantities[v.id] || 0;
+                        return (
+                          <tr key={v.id}>
+                            <td style={{ fontWeight: "700" }}>{v.productNameCache}</td>
+                            <td style={{ color: "var(--ink-2)" }}>{v.colorNameCache} - {v.sizeLabelCache}</td>
+                            <td style={{ fontVariantNumeric: "tabular-nums", color: "var(--ink-3)" }}>{v.barcode}</td>
+                            <td className="num">
+                              <input
+                                type="number"
+                                min="0"
+                                value={countVal}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 0;
+                                  setCountedQuantities((prev) => ({ ...prev, [v.id]: Math.max(0, val) }));
+                                }}
+                                className="input-field"
+                                style={{ width: "80px", textAlign: "right", height: "34px", marginLeft: "auto" }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
 
           {/* Past Stock Count Sessions */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
+          <div className="pos-table-container">
             <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
               <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
                 Stock Count Register ({stockCounts.length})
@@ -1065,7 +1059,7 @@ export function InventoryView() {
                 No stock counts recorded yet for this branch. Click &quot;New stock count&quot; to initiate a physical audit.
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div className="pos-table-scroll">
                 <table className="pos-table">
                   <thead>
                     <tr>

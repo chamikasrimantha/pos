@@ -374,8 +374,9 @@ export function ReturnsDesk() {
           <h4 style={{ fontSize: "15px", fontWeight: "600", color: "var(--ink)", marginBottom: "12px" }}>
             Select items to return or exchange:
           </h4>
-          <div style={{ overflowX: "auto", marginBottom: "20px" }}>
-            <table className="pos-table">
+          <div className="pos-table-container" style={{ marginBottom: "20px" }}>
+            <div style={{ overflowX: "auto", maxHeight: "400px", position: "relative" }}>
+              <table className="pos-table pos-table-form">
               <thead>
                 <tr>
                   <th style={{ width: "40px" }}>Select</th>
@@ -500,6 +501,7 @@ export function ReturnsDesk() {
               </tbody>
             </table>
           </div>
+        </div>
 
           {/* IF SIZE EXCHANGE: REPLACEMENT VARIANT SELECTOR */}
           {mode === "EXCHANGE" && (

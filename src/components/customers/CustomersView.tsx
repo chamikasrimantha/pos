@@ -550,25 +550,18 @@ export function CustomersView() {
       </div>
 
       {/* Customer List (Responsive Cards / Table) */}
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--line)",
-          borderRadius: "var(--radius-panel)",
-          overflow: "hidden",
-        }}
-      >
+      <div className="pos-table-container">
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "14px" }}>
+          <table className="pos-table">
             <thead>
-              <tr style={{ background: "var(--canvas)", borderBottom: "1px solid var(--line)", color: "var(--ink-2)", fontSize: "12px", textTransform: "uppercase" }}>
-                <th style={{ padding: "12px 16px" }}>Customer Name</th>
-                <th style={{ padding: "12px 16px" }}>Phone</th>
-                <th style={{ padding: "12px 16px" }}>Type</th>
-                <th style={{ padding: "12px 16px", textAlign: "right" }}>Outstanding Balance</th>
-                <th style={{ padding: "12px 16px", textAlign: "right" }}>Credit Limit</th>
-                <th style={{ padding: "12px 16px", textAlign: "center" }}>Status</th>
-                <th style={{ padding: "12px 16px", textAlign: "right" }}>Actions</th>
+              <tr>
+                <th>Customer Name</th>
+                <th>Phone</th>
+                <th>Type</th>
+                <th className="num">Outstanding Balance</th>
+                <th className="num">Credit Limit</th>
+                <th style={{ textAlign: "center" }}>Status</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -588,21 +581,18 @@ export function CustomersView() {
                       key={cust.id}
                       onClick={() => setSelectedCustomerId(cust.id)}
                       style={{
-                        borderBottom: "1px solid var(--line)",
                         cursor: "pointer",
                         background: selectedCustomerId === cust.id ? "var(--primary-soft)" : "transparent",
-                        transition: "background 0.12s",
                       }}
-                      className="hover-highlight"
                     >
-                      <td style={{ padding: "14px 16px", fontWeight: "600", color: "var(--ink)" }}>
-                        <div>{cust.name}</div>
+                      <td>
+                        <div style={{ fontWeight: "700", color: "var(--ink)" }}>{cust.name}</div>
                         {cust.address && <div style={{ fontSize: "12px", color: "var(--ink-3)", fontWeight: "normal" }}>{cust.address}</div>}
                       </td>
-                      <td style={{ padding: "14px 16px", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>
+                      <td style={{ color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>
                         {cust.phone}
                       </td>
-                      <td style={{ padding: "14px 16px" }}>
+                      <td>
                         <span
                           style={{
                             fontSize: "11px",
@@ -616,12 +606,12 @@ export function CustomersView() {
                           {cust.type}
                         </span>
                       </td>
-                      <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
+                      <td className="num" style={{ fontWeight: "800" }}>
                         <span style={{ color: bal > 0 ? "var(--danger)" : "var(--success)" }}>
                           {formatCurrency(bal)}
                         </span>
                       </td>
-                      <td style={{ padding: "14px 16px", textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>
+                      <td className="num" style={{ color: "var(--ink-2)" }}>
                         {cust.creditLimit ? (
                           <span style={{ color: isOver ? "var(--danger)" : "inherit", fontWeight: isOver ? 700 : "normal" }}>
                             {formatCurrency(cust.creditLimit)}
@@ -630,21 +620,15 @@ export function CustomersView() {
                           <span style={{ color: "var(--ink-3)" }}>No limit</span>
                         )}
                       </td>
-                      <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                      <td style={{ textAlign: "center" }}>
                         <span
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: "600",
-                            padding: "2px 8px",
-                            borderRadius: "9999px",
-                            background: cust.active ? "#dcfce7" : "#fee2e2",
-                            color: cust.active ? "#15803d" : "#b91c1c",
-                          }}
+                          className={`badge ${cust.active ? "badge-success" : "badge-danger"}`}
+                          style={{ fontSize: "11px", height: "24px" }}
                         >
                           {cust.active ? "Active" : "Inactive"}
                         </span>
                       </td>
-                      <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                      <td style={{ textAlign: "right" }}>
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
@@ -1001,28 +985,10 @@ export function CustomersView() {
 
       {/* Add Customer Modal */}
       {isAddCustomerOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(16, 24, 40, 0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "20px",
-          }}
-        >
+        <div className="modal-backdrop">
           <div
-            style={{
-              width: "100%",
-              maxWidth: "480px",
-              padding: "24px",
-              background: "var(--surface)",
-              borderRadius: "var(--radius-modal)",
-              border: "1px solid var(--line)",
-              boxShadow: "var(--shadow-floating)",
-            }}
+            className="modal-panel animate-fade-in"
+            style={{ maxWidth: "480px" }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
               <h3 style={{ fontSize: "18px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
@@ -1188,28 +1154,10 @@ export function CustomersView() {
 
       {/* Receive Payment Modal */}
       {isReceivePaymentOpen && selectedCustomer && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(16, 24, 40, 0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "20px",
-          }}
-        >
+        <div className="modal-backdrop">
           <div
-            style={{
-              width: "100%",
-              maxWidth: "460px",
-              padding: "24px",
-              background: "var(--surface)",
-              borderRadius: "var(--radius-modal)",
-              border: "1px solid var(--line)",
-              boxShadow: "var(--shadow-floating)",
-            }}
+            className="modal-panel animate-fade-in"
+            style={{ maxWidth: "460px" }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
               <h3 style={{ fontSize: "18px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
@@ -1371,28 +1319,10 @@ export function CustomersView() {
 
       {/* Cash Advance Modal (Super Admin Only) */}
       {isCashAdvanceOpen && selectedCustomer && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(16, 24, 40, 0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "20px",
-          }}
-        >
+        <div className="modal-backdrop">
           <div
-            style={{
-              width: "100%",
-              maxWidth: "440px",
-              padding: "24px",
-              background: "var(--surface)",
-              borderRadius: "var(--radius-modal)",
-              border: "1px solid var(--line)",
-              boxShadow: "var(--shadow-floating)",
-            }}
+            className="modal-panel animate-fade-in"
+            style={{ maxWidth: "440px" }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
               <h3 style={{ fontSize: "18px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
@@ -1473,28 +1403,10 @@ export function CustomersView() {
 
       {/* Adjust / Write-off Modal (Super Admin Only) */}
       {isAdjustBalanceOpen && selectedCustomer && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(16, 24, 40, 0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "20px",
-          }}
-        >
+        <div className="modal-backdrop">
           <div
-            style={{
-              width: "100%",
-              maxWidth: "440px",
-              padding: "24px",
-              background: "var(--surface)",
-              borderRadius: "var(--radius-modal)",
-              border: "1px solid var(--line)",
-              boxShadow: "var(--shadow-floating)",
-            }}
+            className="modal-panel animate-fade-in"
+            style={{ maxWidth: "440px" }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
               <h3 style={{ fontSize: "18px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>

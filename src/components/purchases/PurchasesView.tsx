@@ -1051,77 +1051,80 @@ export function PurchasesView() {
                 </div>
 
                 {/* Table Container with Horizontal Scroll (U10: Responsive at 390px) */}
-                <div style={{ overflowX: "auto", border: "1px solid var(--line)", borderRadius: "8px", background: "var(--surface)" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "450px" }}>
-                    <thead>
-                      <tr style={{ background: "var(--canvas)", borderBottom: "1px solid var(--line)", fontSize: "12px", color: "var(--ink-2)" }}>
-                        <th style={{ padding: "8px 12px", textAlign: "left", width: "120px" }}>Colour</th>
-                        {costPerColor && (
-                          <th style={{ padding: "8px 10px", textAlign: "right", width: "110px" }}>Cost (Rs.)</th>
-                        )}
-                        {gridSizes.map((s) => (
-                          <th key={s.id} style={{ padding: "8px 6px", textAlign: "center", width: "60px" }}>
-                            {s.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {gridColors.map((c) => (
-                        <tr key={c.id} style={{ borderBottom: "1px solid var(--line)" }}>
-                          <td style={{ padding: "8px 12px", fontWeight: "700", fontSize: "13px", color: "var(--ink)" }}>
-                            {c.name}
-                          </td>
+                <div className="pos-table-container" style={{ background: "var(--surface)" }}>
+                  <div style={{ overflowX: "auto", maxHeight: "380px", position: "relative" }}>
+                    <table className="pos-table pos-table-form" style={{ width: "100%", minWidth: "480px" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: "130px" }}>Colour</th>
                           {costPerColor && (
-                            <td style={{ padding: "6px 10px", textAlign: "right" }}>
-                              <input
-                                type="number"
-                                min="0"
-                                placeholder={defaultGridCost || "0"}
-                                className="input-field"
-                                style={{ width: "90px", height: "34px", textAlign: "right", fontSize: "12px", fontVariantNumeric: "tabular-nums" }}
-                                value={colorCostMap[c.id] || ""}
-                                onChange={(e) =>
-                                  setColorCostMap((prev) => ({ ...prev, [c.id]: e.target.value }))
-                                }
-                              />
-                            </td>
+                            <th className="num" style={{ width: "120px" }}>Cost (Rs.)</th>
                           )}
-                          {gridSizes.map((s) => {
-                            const cellKey = `${c.id}_${s.id}`;
-                            const currentVal = gridQuantities[cellKey] || "";
-                            return (
-                              <td key={s.id} style={{ padding: "6px 4px", textAlign: "center" }}>
+                          {gridSizes.map((s) => (
+                            <th key={s.id} style={{ textAlign: "center", width: "64px" }}>
+                              {s.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gridColors.map((c) => (
+                          <tr key={c.id}>
+                            <td style={{ fontWeight: "700", color: "var(--ink)" }}>
+                              {c.name}
+                            </td>
+                            {costPerColor && (
+                              <td className="num">
                                 <input
                                   type="number"
                                   min="0"
-                                  placeholder="0"
+                                  placeholder={defaultGridCost || "0"}
                                   className="input-field"
-                                  style={{
-                                    width: "50px",
-                                    height: "36px",
-                                    textAlign: "center",
-                                    fontSize: "14px",
-                                    fontWeight: currentVal ? "700" : "normal",
-                                    background: currentVal ? "var(--primary-soft)" : "var(--surface)",
-                                    borderColor: currentVal ? "var(--primary)" : "var(--line)",
-                                  }}
-                                  value={currentVal}
-                                  onChange={(e) => {
-                                    const val = parseInt(e.target.value) || 0;
-                                    setGridQuantities((prev) => ({
-                                      ...prev,
-                                      [cellKey]: Math.max(0, val),
-                                    }));
-                                  }}
+                                  style={{ width: "95px", height: "34px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                                  value={colorCostMap[c.id] || ""}
+                                  onChange={(e) =>
+                                    setColorCostMap((prev) => ({ ...prev, [c.id]: e.target.value }))
+                                  }
                                 />
                               </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            )}
+                            {gridSizes.map((s) => {
+                              const cellKey = `${c.id}_${s.id}`;
+                              const currentVal = gridQuantities[cellKey] || "";
+                              return (
+                                <td key={s.id} style={{ textAlign: "center" }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0"
+                                    className="input-field"
+                                    style={{
+                                      width: "52px",
+                                      height: "34px",
+                                      textAlign: "center",
+                                      fontWeight: currentVal ? "700" : "500",
+                                      background: currentVal ? "var(--primary-soft)" : "var(--surface)",
+                                      borderColor: currentVal ? "var(--primary)" : "var(--line-strong)",
+                                      margin: "0 auto",
+                                      display: "block",
+                                    }}
+                                    value={currentVal}
+                                    onChange={(e) => {
+                                      const val = parseInt(e.target.value) || 0;
+                                      setGridQuantities((prev) => ({
+                                        ...prev,
+                                        [cellKey]: Math.max(0, val),
+                                      }));
+                                    }}
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
                 {/* Add Grid to Bill Action */}
@@ -1195,65 +1198,67 @@ export function PurchasesView() {
                 No items added yet. Use the Size-Run Grid or scan barcodes above to add goods.
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table className="pos-table" style={{ width: "100%", minWidth: "600px" }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: "left" }}>Item Description</th>
-                      <th style={{ textAlign: "center", width: "120px" }}>Quantity</th>
-                      <th style={{ textAlign: "right", width: "140px" }}>Unit Cost (Rs.)</th>
-                      <th style={{ textAlign: "right", width: "140px" }}>Total (Rs.)</th>
-                      <th style={{ textAlign: "center", width: "60px" }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {purchaseLines.map((line, idx) => (
-                      <tr key={`${line.variant.id}_${idx}`}>
-                        <td>
-                          <div style={{ fontWeight: "700", color: "var(--ink)" }}>
-                            {line.variant.productNameCache}
-                          </div>
-                          <div style={{ fontSize: "12px", color: "var(--ink-2)" }}>
-                            {line.variant.brandNameCache} • {line.variant.colorNameCache} • {line.variant.sizeLabelCache} ({line.variant.productType || "FOOTWEAR"})
-                          </div>
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <input
-                            type="number"
-                            min="1"
-                            className="input-field"
-                            style={{ width: "80px", height: "38px", textAlign: "center", fontSize: "14px", fontWeight: "700", fontVariantNumeric: "tabular-nums" }}
-                            value={line.quantity}
-                            onChange={(e) => handleUpdateLineQty(idx, parseInt(e.target.value) || 1)}
-                          />
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <input
-                            type="number"
-                            min="0"
-                            className="input-field"
-                            style={{ width: "110px", height: "38px", textAlign: "right", fontSize: "14px", fontVariantNumeric: "tabular-nums" }}
-                            value={line.unitCost}
-                            onChange={(e) => handleUpdateLineCost(idx, parseFloat(e.target.value) || 0)}
-                          />
-                        </td>
-                        <td style={{ textAlign: "right", fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
-                          {formatCurrency(line.quantity * line.unitCost)}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <button
-                            type="button"
-                            aria-label="Remove item"
-                            onClick={() => handleRemoveLine(idx)}
-                            style={{ background: "transparent", border: "none", color: "var(--ink-3)", cursor: "pointer", padding: "6px" }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </td>
+              <div className="pos-table-container" style={{ border: "none", borderRadius: 0 }}>
+                <div style={{ overflowX: "auto", maxHeight: "420px", position: "relative" }}>
+                  <table className="pos-table pos-table-form" style={{ width: "100%", minWidth: "600px" }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left" }}>Item Description</th>
+                        <th style={{ textAlign: "center", width: "120px" }}>Quantity</th>
+                        <th className="num" style={{ width: "150px" }}>Unit Cost (Rs.)</th>
+                        <th className="num" style={{ width: "150px" }}>Total (Rs.)</th>
+                        <th style={{ textAlign: "center", width: "60px" }}>Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {purchaseLines.map((line, idx) => (
+                        <tr key={`${line.variant.id}_${idx}`}>
+                          <td>
+                            <div style={{ fontWeight: "700", color: "var(--ink)" }}>
+                              {line.variant.productNameCache}
+                            </div>
+                            <div style={{ fontSize: "12px", color: "var(--ink-2)" }}>
+                              {line.variant.brandNameCache} • {line.variant.colorNameCache} • {line.variant.sizeLabelCache} ({line.variant.productType || "FOOTWEAR"})
+                            </div>
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            <input
+                              type="number"
+                              min="1"
+                              className="input-field"
+                              style={{ width: "80px", height: "36px", textAlign: "center", fontSize: "14px", fontWeight: "700", fontVariantNumeric: "tabular-nums", margin: "0 auto" }}
+                              value={line.quantity}
+                              onChange={(e) => handleUpdateLineQty(idx, parseInt(e.target.value) || 1)}
+                            />
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            <input
+                              type="number"
+                              min="0"
+                              className="input-field"
+                              style={{ width: "110px", height: "36px", textAlign: "right", fontSize: "14px", fontWeight: "700", fontVariantNumeric: "tabular-nums", marginLeft: "auto" }}
+                              value={line.unitCost}
+                              onChange={(e) => handleUpdateLineCost(idx, parseFloat(e.target.value) || 0)}
+                            />
+                          </td>
+                          <td className="num" style={{ fontWeight: "800", color: "var(--ink)" }}>
+                            {formatCurrency(line.quantity * line.unitCost)}
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            <button
+                              type="button"
+                              aria-label="Remove item"
+                              onClick={() => handleRemoveLine(idx)}
+                              style={{ background: "transparent", border: "none", color: "var(--ink-3)", cursor: "pointer", padding: "6px" }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -1610,14 +1615,7 @@ export function PurchasesView() {
           )}
 
           {/* Purchases Table */}
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--line)",
-              borderRadius: "var(--radius-tile)",
-              overflow: "hidden",
-            }}
-          >
+          <div className="pos-table-container">
             <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
               <h3 style={{ fontSize: "15px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
                 {isSuperAdmin
@@ -1631,7 +1629,7 @@ export function PurchasesView() {
                 No purchase bills found matching the current criteria.
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div className="pos-table-scroll">
                 <table className="pos-table" style={{ width: "100%", minWidth: "750px" }}>
                   <thead>
                     <tr>
@@ -1768,28 +1766,10 @@ export function PurchasesView() {
       {/* POST-PURCHASE SUCCESS BANNER / MODAL                 */}
       {/* ---------------------------------------------------- */}
       {completedPurchase && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 100,
-            padding: "16px",
-          }}
-        >
+        <div className="modal-backdrop">
           <div
-            style={{
-              background: "var(--surface)",
-              borderRadius: "14px",
-              padding: "24px",
-              maxWidth: "500px",
-              width: "100%",
-              boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
-              textAlign: "center",
-            }}
+            className="modal-panel animate-fade-in"
+            style={{ maxWidth: "500px", textAlign: "center" }}
           >
             <div
               style={{
@@ -1877,29 +1857,10 @@ export function PurchasesView() {
       {/* SUPER ADMIN DETAIL & REVIEW MODAL                    */}
       {/* ---------------------------------------------------- */}
       {detailPurchase && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 100,
-            padding: "16px",
-          }}
-        >
+        <div className="modal-backdrop">
           <div
-            style={{
-              background: "var(--surface)",
-              borderRadius: "14px",
-              padding: "24px",
-              maxWidth: "700px",
-              width: "100%",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
-            }}
+            className="modal-panel modal-panel-lg animate-fade-in"
+            style={{ maxWidth: "700px" }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
               <div>
@@ -2021,27 +1982,10 @@ export function PurchasesView() {
       {/* ADD NEW SUPPLIER MODAL                               */}
       {/* ---------------------------------------------------- */}
       {isAddSupplierModalOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 110,
-            padding: "16px",
-          }}
-        >
+        <div className="modal-backdrop">
           <div
-            style={{
-              background: "var(--surface)",
-              borderRadius: "14px",
-              padding: "24px",
-              maxWidth: "450px",
-              width: "100%",
-              boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
-            }}
+            className="modal-panel animate-fade-in"
+            style={{ maxWidth: "450px" }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
               <h3 style={{ fontSize: "17px", fontWeight: "800", color: "var(--ink)", margin: 0 }}>

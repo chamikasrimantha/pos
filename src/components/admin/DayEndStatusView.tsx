@@ -455,33 +455,35 @@ export function DayEndStatusView() {
             {statusData.dailyCashSummary?.cashierBreakdowns && statusData.dailyCashSummary.cashierBreakdowns.length > 0 && (
               <div style={{ marginTop: "16px", borderTop: "1px solid var(--line)", paddingTop: "14px" }}>
                 <div style={{ fontSize: "13px", fontWeight: "700", color: "var(--ink)", marginBottom: "10px" }}>Cashier Breakdown</div>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                    <thead>
-                      <tr style={{ background: "var(--surface-muted, #f9fafb)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
-                        <th style={{ padding: "8px 12px" }}>Cashier</th>
-                        <th style={{ padding: "8px 12px", textAlign: "right" }}>Cash Sales</th>
-                        <th style={{ padding: "8px 12px", textAlign: "right" }}>Repair Cash</th>
-                        <th style={{ padding: "8px 12px", textAlign: "right" }}>Cash Refunds</th>
-                        <th style={{ padding: "8px 12px", textAlign: "right" }}>Net Cash</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {statusData.dailyCashSummary.cashierBreakdowns.map((cb: any) => (
-                        <tr key={cb.cashierId} style={{ borderBottom: "1px solid var(--line)" }}>
-                          <td style={{ padding: "10px 12px", fontWeight: "700" }}>{cb.cashierName}</td>
-                          <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatCurrency(cb.cashSales)}</td>
-                          <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatCurrency(cb.repairCashCollected)}</td>
-                          <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: cb.cashRefunds > 0 ? "var(--danger)" : "inherit" }}>
-                            {cb.cashRefunds > 0 ? `-${formatCurrency(cb.cashRefunds)}` : "Rs. 0.00"}
-                          </td>
-                          <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: "800", fontVariantNumeric: "tabular-nums", color: cb.netCashMovement >= 0 ? "var(--success)" : "var(--danger)" }}>
-                            {formatCurrency(cb.netCashMovement)}
-                          </td>
+                <div className="pos-table-container">
+                  <div className="pos-table-scroll">
+                    <table className="pos-table">
+                      <thead>
+                        <tr>
+                          <th>Cashier</th>
+                          <th className="num">Cash Sales</th>
+                          <th className="num">Repair Cash</th>
+                          <th className="num">Cash Refunds</th>
+                          <th className="num">Net Cash</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {statusData.dailyCashSummary.cashierBreakdowns.map((cb: any) => (
+                          <tr key={cb.cashierId}>
+                            <td style={{ fontWeight: "700" }}>{cb.cashierName}</td>
+                            <td className="num">{formatCurrency(cb.cashSales)}</td>
+                            <td className="num">{formatCurrency(cb.repairCashCollected)}</td>
+                            <td className="num" style={{ color: cb.cashRefunds > 0 ? "var(--danger)" : "inherit" }}>
+                              {cb.cashRefunds > 0 ? `-${formatCurrency(cb.cashRefunds)}` : "Rs. 0.00"}
+                            </td>
+                            <td className="num" style={{ fontWeight: "800", color: cb.netCashMovement >= 0 ? "var(--success)" : "var(--danger)" }}>
+                              {formatCurrency(cb.netCashMovement)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}
@@ -517,89 +519,78 @@ export function DayEndStatusView() {
               </button>
             </div>
 
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                <thead>
-                  <tr style={{ background: "var(--surface-muted, #f9fafb)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
-                    <th style={{ padding: "10px 12px" }}>Invoice #</th>
-                    <th style={{ padding: "10px 12px" }}>Issued At</th>
-                    <th style={{ padding: "10px 12px" }}>Cashier</th>
-                    <th style={{ padding: "10px 12px" }}>Customer</th>
-                    <th style={{ padding: "10px 12px", textAlign: "center" }}>Status</th>
-                    <th style={{ padding: "10px 12px", textAlign: "right" }}>Net Total</th>
-                    <th style={{ padding: "10px 12px", textAlign: "center" }}>Print</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {statusData.sales.length === 0 ? (
+            <div className="pos-table-container">
+              <div className="pos-table-scroll">
+                <table className="pos-table">
+                  <thead>
                     <tr>
-                      <td colSpan={7} style={{ padding: "16px", textAlign: "center", color: "var(--ink-3)" }}>
-                        No invoices issued on {selectedDateKey}.
-                      </td>
+                      <th>Invoice #</th>
+                      <th>Issued At</th>
+                      <th>Cashier</th>
+                      <th>Customer</th>
+                      <th style={{ textAlign: "center" }}>Status</th>
+                      <th className="num">Net Total</th>
+                      <th style={{ textAlign: "center" }}>Print</th>
                     </tr>
-                  ) : (
-                    statusData.sales.map((sale) => (
-                      <tr key={sale.id} style={{ borderBottom: "1px solid var(--line)" }}>
-                        <td style={{ padding: "12px", fontWeight: "800" }}>{sale.invoiceNumber}</td>
-                        <td style={{ padding: "12px", color: "var(--ink-2)" }}>{formatDate(sale.createdAt)}</td>
-                        <td style={{ padding: "12px" }}>{sale.cashierNameCache || "Cashier"}</td>
-                        <td style={{ padding: "12px" }}>{sale.customerName || "Walk-in"}</td>
-                        <td style={{ padding: "12px", textAlign: "center" }}>
-                          <span
-                            style={{
-                              display: "inline-block",
-                              padding: "2px 8px",
-                              borderRadius: "4px",
-                              fontSize: "11px",
-                              fontWeight: "700",
-                              background:
-                                sale.status === "COMPLETED"
-                                  ? sale.returnStatus === "PARTIALLY_RETURNED"
-                                    ? "var(--warning-soft, #fef3c7)"
-                                    : sale.returnStatus === "FULLY_RETURNED"
-                                    ? "var(--danger-soft, #fee2e2)"
-                                    : "var(--success-soft, #dcfce7)"
-                                  : "var(--surface-muted)",
-                              color:
-                                sale.status === "COMPLETED"
-                                  ? sale.returnStatus === "PARTIALLY_RETURNED"
-                                    ? "var(--warning-ink, #b45309)"
-                                    : sale.returnStatus === "FULLY_RETURNED"
-                                    ? "var(--danger)"
-                                    : "var(--success)"
-                                  : "var(--ink)",
-                            }}
-                          >
-                            {sale.status === "COMPLETED"
-                              ? sale.returnStatus === "PARTIALLY_RETURNED"
-                                ? "PARTIAL RETURN"
-                                : sale.returnStatus === "FULLY_RETURNED"
-                                ? "RETURNED"
-                                : "COMPLETED"
-                              : "CANCELLED"}
-                          </span>
-                        </td>
-                        <td style={{ padding: "12px", textAlign: "right", fontWeight: "800" }}>
-                          {formatCurrency(sale.total)}
-                        </td>
-                        <td style={{ padding: "12px", textAlign: "center" }}>
-                          <button
-                            onClick={() => {
-                              const html = renderSaleReceiptHTML(sale, [], activeShop, true);
-                              openPrintModal(`Invoice #${sale.invoiceNumber} (DUPLICATE)`, html);
-                            }}
-                            className="btn btn-ghost btn-sm"
-                            style={{ height: "30px", width: "30px", padding: 0 }}
-                            title="Print duplicate invoice"
-                          >
-                            <Printer size={14} />
-                          </button>
+                  </thead>
+                  <tbody>
+                    {statusData.sales.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: "32px", textAlign: "center", color: "var(--ink-3)" }}>
+                          No invoices issued on {selectedDateKey}.
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      statusData.sales.map((sale) => (
+                        <tr key={sale.id}>
+                          <td style={{ fontWeight: "800", fontVariantNumeric: "tabular-nums" }}>{sale.invoiceNumber}</td>
+                          <td style={{ color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{formatDate(sale.createdAt)}</td>
+                          <td>{sale.cashierNameCache || "Cashier"}</td>
+                          <td>{sale.customerName || "Walk-in"}</td>
+                          <td style={{ textAlign: "center" }}>
+                            <span
+                              className={`badge ${
+                                sale.status === "COMPLETED"
+                                  ? sale.returnStatus === "PARTIALLY_RETURNED"
+                                    ? "badge-warning"
+                                    : sale.returnStatus === "FULLY_RETURNED"
+                                    ? "badge-danger"
+                                    : "badge-success"
+                                  : "badge-neutral"
+                              }`}
+                              style={{ fontSize: "11px", height: "24px" }}
+                            >
+                              {sale.status === "COMPLETED"
+                                ? sale.returnStatus === "PARTIALLY_RETURNED"
+                                  ? "PARTIAL RETURN"
+                                  : sale.returnStatus === "FULLY_RETURNED"
+                                  ? "RETURNED"
+                                  : "COMPLETED"
+                                : "CANCELLED"}
+                            </span>
+                          </td>
+                          <td className="num" style={{ fontWeight: "800" }}>
+                            {formatCurrency(sale.total)}
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            <button
+                              onClick={() => {
+                                const html = renderSaleReceiptHTML(sale, [], activeShop, true);
+                                openPrintModal(`Invoice #${sale.invoiceNumber} (DUPLICATE)`, html);
+                              }}
+                              className="btn btn-secondary btn-sm"
+                              style={{ height: "30px", width: "30px", padding: 0 }}
+                              title="Print duplicate invoice"
+                            >
+                              <Printer size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </>

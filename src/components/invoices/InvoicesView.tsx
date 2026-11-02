@@ -368,14 +368,7 @@ export function InvoicesView({
       </div>
 
       {/* Main Invoices Table (Desktop) / Cards (Phone) */}
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--line)",
-          borderRadius: "var(--radius-tile)",
-          overflow: "hidden",
-        }}
-      >
+      <div className="pos-table-container">
         {invoices.length === 0 ? (
           <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--ink-3)" }}>
             <Receipt size={40} style={{ margin: "0 auto 12px", opacity: 0.4 }} />
@@ -386,8 +379,8 @@ export function InvoicesView({
           </div>
         ) : (
           <>
-            {/* DESKTOP TABLE VIEW — Fit to screen without horizontal scrolling */}
-            <div className="desktop-only-table" style={{ width: "100%", overflowX: "hidden" }}>
+            {/* DESKTOP TABLE VIEW */}
+            <div className="desktop-only-table pos-table-scroll">
               <table className="pos-table" style={{ width: "100%", tableLayout: "auto" }}>
                 <thead>
                   <tr>
@@ -764,34 +757,36 @@ export function InvoicesView({
                 <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--ink)", marginBottom: "8px" }}>
                   Purchased Footwear Lines
                 </div>
-                <div style={{ border: "1px solid var(--line)", borderRadius: "8px", overflow: "hidden" }}>
-                  <table className="pos-table" style={{ fontSize: "13px" }}>
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th style={{ textAlign: "center" }}>Qty</th>
-                        <th className="num">Price</th>
-                        <th className="num">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(itemsBySaleId[selectedInvoice.id] || []).map((it) => (
-                        <tr key={it.id}>
-                          <td>
-                            <div style={{ fontWeight: "600" }}>{it.variantDescriptionCache}</div>
-                            {it.discount > 0 && (
-                              <div style={{ fontSize: "11px", color: "var(--danger)" }}>
-                                Disc: -{formatCurrency(it.discount)}
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{it.quantity}</td>
-                          <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(it.unitSellingPrice)}</td>
-                          <td className="num" style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{formatCurrency(it.lineTotal)}</td>
+                <div className="pos-table-container">
+                  <div style={{ overflowX: "auto", maxHeight: "320px", position: "relative" }}>
+                    <table className="pos-table pos-table-form">
+                      <thead>
+                        <tr>
+                          <th>Item</th>
+                          <th style={{ textAlign: "center" }}>Qty</th>
+                          <th className="num">Price</th>
+                          <th className="num">Total</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {(itemsBySaleId[selectedInvoice.id] || []).map((it) => (
+                          <tr key={it.id}>
+                            <td>
+                              <div style={{ fontWeight: "600" }}>{it.variantDescriptionCache}</div>
+                              {it.discount > 0 && (
+                                <div style={{ fontSize: "11px", color: "var(--danger)" }}>
+                                  Disc: -{formatCurrency(it.discount)}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{it.quantity}</td>
+                            <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(it.unitSellingPrice)}</td>
+                            <td className="num" style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{formatCurrency(it.lineTotal)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
 
@@ -854,30 +849,12 @@ export function InvoicesView({
       {/* Cashier "My Day Summary" Modal (CR-02 Section 3.2 / S4) */}
       {isDaySummaryModalOpen && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(16, 24, 40, 0.5)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 10000,
-            padding: "16px",
-          }}
+          className="modal-backdrop"
           onClick={() => setIsDaySummaryModalOpen(false)}
         >
           <div
-            className="animate-fade-in"
-            style={{
-              background: "var(--surface)",
-              borderRadius: "var(--radius-modal)",
-              maxWidth: "480px",
-              width: "100%",
-              boxShadow: "var(--shadow-floating)",
-              border: "1px solid var(--line)",
-              overflow: "hidden",
-            }}
+            className="modal-panel animate-fade-in"
+            style={{ maxWidth: "480px", padding: 0 }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}

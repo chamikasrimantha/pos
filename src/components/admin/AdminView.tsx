@@ -444,14 +444,7 @@ export function AdminView() {
 
       {/* TAB 2: USERS & PERMISSIONS */}
       {activeTab === "USERS" && (
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--line)",
-            borderRadius: "var(--radius-tile)",
-            overflow: "hidden",
-          }}
-        >
+        <div className="pos-table-container">
           <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <h3 style={{ fontSize: "16px", fontWeight: "600", color: "var(--ink)", margin: 0 }}>
@@ -465,7 +458,7 @@ export function AdminView() {
               <Plus size={16} /> Add Staff User
             </button>
           </div>
-          <div style={{ overflowX: "auto" }}>
+          <div className="pos-table-scroll">
             <table className="pos-table">
               <thead>
                 <tr>
@@ -802,14 +795,7 @@ export function AdminView() {
 
       {/* TAB 4: AUDIT LOGS */}
       {activeTab === "AUDIT" && (
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--line)",
-            borderRadius: "var(--radius-tile)",
-            overflow: "hidden",
-          }}
-        >
+        <div className="pos-table-container">
           <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <h3 style={{ fontSize: "16px", fontWeight: "600", color: "var(--ink)", margin: 0 }}>
               Immutable System Audit Trail ({filteredAuditLogs.length})
@@ -856,7 +842,7 @@ export function AdminView() {
               No audited events found matching filter criteria.
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div className="pos-table-scroll">
               <table className="pos-table">
                 <thead>
                   <tr>

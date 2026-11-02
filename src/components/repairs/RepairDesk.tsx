@@ -502,20 +502,13 @@ export function RepairDesk() {
       </div>
 
       {/* Repairs Table */}
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--line)",
-          borderRadius: "var(--radius-tile)",
-          overflow: "hidden",
-        }}
-      >
+      <div className="pos-table-container">
         {filteredRepairs.length === 0 ? (
           <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--ink-2)", fontSize: "14px" }}>
             No repair service orders matching your criteria. Click &quot;Receive item for repair&quot; to intake shoes or bags.
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="pos-table-scroll">
             <table className="pos-table">
               <thead>
                 <tr>

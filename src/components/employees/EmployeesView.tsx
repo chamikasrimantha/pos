@@ -663,8 +663,8 @@ export function EmployeesView() {
           </div>
 
           {/* Employees Table */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
-            <div style={{ overflowX: "auto" }}>
+          <div className="pos-table-container">
+            <div className="pos-table-scroll">
               <table className="pos-table">
                 <thead>
                   <tr>
@@ -788,8 +788,8 @@ export function EmployeesView() {
           </div>
 
           {/* Wages Table */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
-            <div style={{ overflowX: "auto" }}>
+          <div className="pos-table-container">
+            <div className="pos-table-scroll">
               <table className="pos-table">
                 <thead>
                   <tr>
@@ -873,8 +873,8 @@ export function EmployeesView() {
           </div>
 
           {/* Payroll Sheet Table */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
-            <div style={{ overflowX: "auto" }}>
+          <div className="pos-table-container">
+            <div className="pos-table-scroll">
               <table className="pos-table">
                 <thead>
                   <tr>
@@ -1083,8 +1083,8 @@ export function EmployeesView() {
           )}
 
           {/* Leave History Table */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-tile)", overflow: "hidden" }}>
-            <div style={{ overflowX: "auto" }}>
+          <div className="pos-table-container">
+            <div className="pos-table-scroll">
               <table className="pos-table">
                 <thead>
                   <tr>
@@ -1437,8 +1437,9 @@ export function EmployeesView() {
               </button>
             </div>
 
-            <div style={{ maxHeight: "350px", overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--radius-control)" }}>
-              <table className="pos-table" style={{ fontSize: "12px" }}>
+            <div className="pos-table-container" style={{ maxHeight: "360px" }}>
+              <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "360px", position: "relative" }}>
+                <table className="pos-table pos-table-form">
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -1471,6 +1472,7 @@ export function EmployeesView() {
                 </tbody>
               </table>
             </div>
+          </div>
 
             <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end" }}>
               <button type="button" className="btn btn-secondary" onClick={() => setIsStaffLedgerOpen(false)}>Close</button>

@@ -423,17 +423,8 @@ export function ProductsMasterView() {
       </div>
 
       {/* Desktop Table View */}
-      <div
-        className="desktop-only-table"
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--line)",
-          borderRadius: "16px",
-          overflow: "hidden",
-          boxShadow: "0 1px 6px rgba(0,0,0,0.03)",
-        }}
-      >
-        <div style={{ width: "100%", overflowX: "auto" }}>
+      <div className="desktop-only-table pos-table-container">
+        <div className="pos-table-scroll">
           <table className="pos-table" style={{ width: "100%", tableLayout: "auto" }}>
             <thead>
               <tr>
@@ -451,9 +442,9 @@ export function ProductsMasterView() {
                 <th>Product & Brand</th>
                 <th>Color & Size</th>
                 <th>SKU & Barcode</th>
-                <th style={{ textAlign: "right" }}>Stock ({activeShop.name})</th>
-                {canSeeCost && <th style={{ textAlign: "right" }}>Cost</th>}
-                <th style={{ textAlign: "right" }}>Selling Price</th>
+                <th className="num">Stock ({activeShop.name})</th>
+                {canSeeCost && <th className="num">Cost</th>}
+                <th className="num">Selling Price</th>
                 <th>Status</th>
                 <th style={{ textAlign: "right" }}>Actions</th>
               </tr>

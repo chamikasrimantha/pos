@@ -479,51 +479,53 @@ export function ReportsView() {
                 </div>
               </div>
 
-              <div style={{ overflowX: "auto" }}>
-                <table className="pos-table" style={{ width: "100%" }}>
-                  <thead>
-                    <tr>
-                      <th>Transfer #</th>
-                      <th>Mode</th>
-                      <th>From Outlet</th>
-                      <th>To Outlet</th>
-                      <th className="num">Pairs</th>
-                      <th>Dispatched By</th>
-                      <th>Date</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTransfers.length === 0 ? (
+              <div className="pos-table-container">
+                <div className="pos-table-scroll">
+                  <table className="pos-table" style={{ width: "100%" }}>
+                    <thead>
                       <tr>
-                        <td colSpan={8} style={{ padding: "20px", textAlign: "center", color: "var(--ink-3)" }}>
-                          No transfers match the selected filters.
-                        </td>
+                        <th>Transfer #</th>
+                        <th>Mode</th>
+                        <th>From Outlet</th>
+                        <th>To Outlet</th>
+                        <th className="num">Pairs</th>
+                        <th>Dispatched By</th>
+                        <th>Date</th>
+                        <th>Status</th>
                       </tr>
-                    ) : (
-                      filteredTransfers.map((t) => (
-                        <tr key={t.id}>
-                          <td style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>{t.transferNumber}</td>
-                          <td>
-                            <span className={`badge ${t.mode === "QUICK" ? "badge-primary" : "badge-neutral"}`}>
-                              {t.mode === "QUICK" ? "QUICK" : "FORMAL"}
-                            </span>
-                          </td>
-                          <td>{t.sourceShopId}</td>
-                          <td>{t.destinationShopId}</td>
-                          <td className="num" style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>{t.totalQuantity}</td>
-                          <td>{t.dispatchedBy}</td>
-                          <td style={{ fontVariantNumeric: "tabular-nums" }}>{formatDate(t.dispatchedAt)}</td>
-                          <td>
-                            <span className={`badge ${t.status === "RECEIVED" ? "badge-success" : t.status === "IN_TRANSIT" ? "badge-warning" : "badge-neutral"}`}>
-                              {t.status}
-                            </span>
+                    </thead>
+                    <tbody>
+                      {filteredTransfers.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={{ padding: "20px", textAlign: "center", color: "var(--ink-3)" }}>
+                            No transfers match the selected filters.
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        filteredTransfers.map((t) => (
+                          <tr key={t.id}>
+                            <td style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>{t.transferNumber}</td>
+                            <td>
+                              <span className={`badge ${t.mode === "QUICK" ? "badge-primary" : "badge-neutral"}`}>
+                                {t.mode === "QUICK" ? "QUICK" : "FORMAL"}
+                              </span>
+                            </td>
+                            <td>{t.sourceShopId}</td>
+                            <td>{t.destinationShopId}</td>
+                            <td className="num" style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>{t.totalQuantity}</td>
+                            <td>{t.dispatchedBy}</td>
+                            <td style={{ fontVariantNumeric: "tabular-nums" }}>{formatDate(t.dispatchedAt)}</td>
+                            <td>
+                              <span className={`badge ${t.status === "RECEIVED" ? "badge-success" : t.status === "IN_TRANSIT" ? "badge-warning" : "badge-neutral"}`}>
+                                {t.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -583,49 +585,51 @@ export function ReportsView() {
                 </div>
               </div>
 
-              <div style={{ overflowX: "auto" }}>
-                <table className="pos-table" style={{ width: "100%" }}>
-                  <thead>
-                    <tr>
-                      <th>Purchase #</th>
-                      <th>Supplier</th>
-                      <th>Branch</th>
-                      <th>Method</th>
-                      <th className="num">Bill Total</th>
-                      <th className="num">Paid Now</th>
-                      <th>Received By</th>
-                      <th>Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPurchases.length === 0 ? (
+              <div className="pos-table-container">
+                <div className="pos-table-scroll">
+                  <table className="pos-table" style={{ width: "100%" }}>
+                    <thead>
                       <tr>
-                        <td colSpan={8} style={{ padding: "20px", textAlign: "center", color: "var(--ink-3)" }}>
-                          No purchases match the selected filters.
-                        </td>
+                        <th>Purchase #</th>
+                        <th>Supplier</th>
+                        <th>Branch</th>
+                        <th>Method</th>
+                        <th className="num">Bill Total</th>
+                        <th className="num">Paid Now</th>
+                        <th>Received By</th>
+                        <th>Date</th>
                       </tr>
-                    ) : (
-                      filteredPurchases.map((p) => (
-                        <tr key={p.id}>
-                          <td style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>{p.purchaseNumber}</td>
-                          <td style={{ fontWeight: "600" }}>{p.supplierNameCache}</td>
-                          <td>{p.shopId}</td>
-                          <td>
-                            <span className="badge badge-neutral">{p.paymentMethod || "CASH"}</span>
+                    </thead>
+                    <tbody>
+                      {filteredPurchases.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={{ padding: "20px", textAlign: "center", color: "var(--ink-3)" }}>
+                            No purchases match the selected filters.
                           </td>
-                          <td className="num" style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
-                            {formatCurrency(p.totalAmount)}
-                          </td>
-                          <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>
-                            {formatCurrency(p.paidAmount || 0)}
-                          </td>
-                          <td>{p.createdByNameCache || p.receivedBy}</td>
-                          <td style={{ fontVariantNumeric: "tabular-nums" }}>{formatDate(p.invoiceDate || p.receivedAt)}</td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        filteredPurchases.map((p) => (
+                          <tr key={p.id}>
+                            <td style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>{p.purchaseNumber}</td>
+                            <td style={{ fontWeight: "600" }}>{p.supplierNameCache}</td>
+                            <td>{p.shopId}</td>
+                            <td>
+                              <span className="badge badge-neutral">{p.paymentMethod || "CASH"}</span>
+                            </td>
+                            <td className="num" style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
+                              {formatCurrency(p.totalAmount)}
+                            </td>
+                            <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>
+                              {formatCurrency(p.paidAmount || 0)}
+                            </td>
+                            <td>{p.createdByNameCache || p.receivedBy}</td>
+                            <td style={{ fontVariantNumeric: "tabular-nums" }}>{formatDate(p.invoiceDate || p.receivedAt)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -670,67 +674,69 @@ export function ReportsView() {
                 </div>
               </div>
 
-              <div style={{ overflowX: "auto" }}>
-                <table className="pos-table">
-                  <thead>
-                    <tr>
-                      <th>Repair #</th>
-                      <th>Type</th>
-                      <th>Customer</th>
-                      <th>Contact</th>
-                      <th>Item Description</th>
-                      <th>Warranty</th>
-                      <th>Intake date</th>
-                      <th className="num">Estimated fee</th>
-                      <th className="num">Advance paid</th>
-                      <th className="num">Balance due</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRepairs.length === 0 ? (
+              <div className="pos-table-container">
+                <div className="pos-table-scroll">
+                  <table className="pos-table">
+                    <thead>
                       <tr>
-                        <td colSpan={11} style={{ padding: "20px", textAlign: "center", color: "var(--ink-3)" }}>
-                          No repair orders match the selected filters.
-                        </td>
+                        <th>Repair #</th>
+                        <th>Type</th>
+                        <th>Customer</th>
+                        <th>Contact</th>
+                        <th>Item Description</th>
+                        <th>Warranty</th>
+                        <th>Intake date</th>
+                        <th className="num">Estimated fee</th>
+                        <th className="num">Advance paid</th>
+                        <th className="num">Balance due</th>
+                        <th>Status</th>
                       </tr>
-                    ) : (
-                      filteredRepairs.map((r) => (
-                        <tr key={r.id}>
-                          <td style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{r.repairNumber}</td>
-                          <td>
-                            <span className={`badge ${r.itemType === "BAG" ? "badge-primary" : "badge-neutral"}`}>
-                              {r.itemType || "FOOTWEAR"}
-                            </span>
-                          </td>
-                          <td style={{ fontWeight: "500" }}>{r.customerName}</td>
-                          <td style={{ color: "var(--ink-2)" }}>{r.customerPhone}</td>
-                          <td style={{ fontSize: "13px", color: "var(--ink-2)" }}>
-                            {r.shoeBrand} {r.shoeModel}
-                          </td>
-                          <td>
-                            {r.isWarranty ? (
-                              <span className={`badge ${r.warrantyStatus === "VERIFIED" ? "badge-success" : "badge-warning"}`}>
-                                {r.warrantyStatus === "VERIFIED" ? "Warranty (Free)" : "Unverified"}
-                              </span>
-                            ) : (
-                              <span style={{ fontSize: "12px", color: "var(--ink-3)" }}>Paid</span>
-                            )}
-                          </td>
-                          <td style={{ fontSize: "13px", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{formatDate(r.receivedAt)}</td>
-                          <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(r.estimatedCost)}</td>
-                          <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(r.advancePaid)}</td>
-                          <td className="num" style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
-                            {formatCurrency(r.balanceDue)}
-                          </td>
-                          <td>
-                            <span className="badge badge-neutral">{r.status}</span>
+                    </thead>
+                    <tbody>
+                      {filteredRepairs.length === 0 ? (
+                        <tr>
+                          <td colSpan={11} style={{ padding: "20px", textAlign: "center", color: "var(--ink-3)" }}>
+                            No repair orders match the selected filters.
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        filteredRepairs.map((r) => (
+                          <tr key={r.id}>
+                            <td style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{r.repairNumber}</td>
+                            <td>
+                              <span className={`badge ${r.itemType === "BAG" ? "badge-primary" : "badge-neutral"}`}>
+                                {r.itemType || "FOOTWEAR"}
+                              </span>
+                            </td>
+                            <td style={{ fontWeight: "500" }}>{r.customerName}</td>
+                            <td style={{ color: "var(--ink-2)" }}>{r.customerPhone}</td>
+                            <td style={{ fontSize: "13px", color: "var(--ink-2)" }}>
+                              {r.shoeBrand} {r.shoeModel}
+                            </td>
+                            <td>
+                              {r.isWarranty ? (
+                                <span className={`badge ${r.warrantyStatus === "VERIFIED" ? "badge-success" : "badge-warning"}`}>
+                                  {r.warrantyStatus === "VERIFIED" ? "Warranty (Free)" : "Unverified"}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: "12px", color: "var(--ink-3)" }}>Paid</span>
+                              )}
+                            </td>
+                            <td style={{ fontSize: "13px", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{formatDate(r.receivedAt)}</td>
+                            <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(r.estimatedCost)}</td>
+                            <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(r.advancePaid)}</td>
+                            <td className="num" style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
+                              {formatCurrency(r.balanceDue)}
+                            </td>
+                            <td>
+                              <span className="badge badge-neutral">{r.status}</span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -763,41 +769,43 @@ export function ReportsView() {
                 </div>
               </div>
 
-              <div style={{ overflowX: "auto" }}>
-                <table className="pos-table">
-                  <thead>
-                    <tr>
-                      <th>Variant ID</th>
-                      <th>Outlet Branch</th>
-                      <th className="num">On hand qty</th>
-                      <th className="num">Reorder alert level</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inventoryList.map((inv) => (
-                      <tr key={inv.id}>
-                        <td style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{inv.variantId}</td>
-                        <td>{inv.shopId}</td>
-                        <td className="num" style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{inv.quantityOnHand} pairs</td>
-                        <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{inv.reorderLevel}</td>
-                        <td>
-                          <span
-                            className={`badge ${
-                              inv.quantityOnHand <= 0
-                                ? "badge-danger"
-                                : inv.quantityOnHand <= inv.reorderLevel
-                                ? "badge-amber"
-                                : "badge-success"
-                            }`}
-                          >
-                            {inv.quantityOnHand <= 0 ? "Depleted" : inv.quantityOnHand <= inv.reorderLevel ? "Low stock" : "In stock"}
-                          </span>
-                        </td>
+              <div className="pos-table-container">
+                <div className="pos-table-scroll">
+                  <table className="pos-table">
+                    <thead>
+                      <tr>
+                        <th>Variant ID</th>
+                        <th>Outlet Branch</th>
+                        <th className="num">On hand qty</th>
+                        <th className="num">Reorder alert level</th>
+                        <th>Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {inventoryList.map((inv) => (
+                        <tr key={inv.id}>
+                          <td style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{inv.variantId}</td>
+                          <td>{inv.shopId}</td>
+                          <td className="num" style={{ fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>{inv.quantityOnHand} pairs</td>
+                          <td className="num" style={{ fontVariantNumeric: "tabular-nums" }}>{inv.reorderLevel}</td>
+                          <td>
+                            <span
+                              className={`badge ${
+                                inv.quantityOnHand <= 0
+                                  ? "badge-danger"
+                                  : inv.quantityOnHand <= inv.reorderLevel
+                                  ? "badge-amber"
+                                  : "badge-success"
+                              }`}
+                            >
+                              {inv.quantityOnHand <= 0 ? "Depleted" : inv.quantityOnHand <= inv.reorderLevel ? "Low stock" : "In stock"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

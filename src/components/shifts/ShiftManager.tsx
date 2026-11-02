@@ -343,56 +343,54 @@ export function ShiftManager() {
             </h3>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-              <thead>
-                <tr style={{ background: "var(--surface-muted, #f9fafb)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
-                  <th style={{ padding: "10px 12px" }}>Cashier</th>
-                  <th style={{ padding: "10px 12px", textAlign: "right" }}>Cash Sales</th>
-                  <th style={{ padding: "10px 12px", textAlign: "right" }}>Repair Cash</th>
-                  <th style={{ padding: "10px 12px", textAlign: "right" }}>Cash Refunds</th>
-                  <th style={{ padding: "10px 12px", textAlign: "right" }}>Net Cash</th>
-                  <th style={{ padding: "10px 12px", textAlign: "center" }}>Transactions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.cashierBreakdowns.map((cb: DailyCashSummary) => (
-                  <tr key={cb.cashierId} style={{ borderBottom: "1px solid var(--line)" }}>
-                    <td style={{ padding: "12px", fontWeight: "700" }}>{cb.cashierName}</td>
-                    <td style={{ padding: "12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {formatCurrency(cb.cashSales)}
-                    </td>
-                    <td style={{ padding: "12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {formatCurrency(cb.repairCashCollected)}
-                    </td>
-                    <td
-                      style={{
-                        padding: "12px",
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                        color: cb.cashRefunds > 0 ? "var(--danger)" : "var(--ink)",
-                      }}
-                    >
-                      {cb.cashRefunds > 0 ? `-${formatCurrency(cb.cashRefunds)}` : "Rs. 0.00"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "12px",
-                        textAlign: "right",
-                        fontWeight: "800",
-                        fontVariantNumeric: "tabular-nums",
-                        color: cb.netCashMovement >= 0 ? "var(--success)" : "var(--danger)",
-                      }}
-                    >
-                      {formatCurrency(cb.netCashMovement)}
-                    </td>
-                    <td style={{ padding: "12px", textAlign: "center", color: "var(--ink-2)" }}>
-                      {cb.salesCount + cb.refundsCount + cb.repairsCount} ops
-                    </td>
+          <div className="pos-table-container">
+            <div className="pos-table-scroll">
+              <table className="pos-table">
+                <thead>
+                  <tr>
+                    <th>Cashier</th>
+                    <th className="num">Cash Sales</th>
+                    <th className="num">Repair Cash</th>
+                    <th className="num">Cash Refunds</th>
+                    <th className="num">Net Cash</th>
+                    <th style={{ textAlign: "center" }}>Transactions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {summary.cashierBreakdowns.map((cb: DailyCashSummary) => (
+                    <tr key={cb.cashierId}>
+                      <td style={{ fontWeight: "700" }}>{cb.cashierName}</td>
+                      <td className="num">
+                        {formatCurrency(cb.cashSales)}
+                      </td>
+                      <td className="num">
+                        {formatCurrency(cb.repairCashCollected)}
+                      </td>
+                      <td
+                        className="num"
+                        style={{
+                          color: cb.cashRefunds > 0 ? "var(--danger)" : "var(--ink)",
+                        }}
+                      >
+                        {cb.cashRefunds > 0 ? `-${formatCurrency(cb.cashRefunds)}` : "Rs. 0.00"}
+                      </td>
+                      <td
+                        className="num"
+                        style={{
+                          fontWeight: "800",
+                          color: cb.netCashMovement >= 0 ? "var(--success)" : "var(--danger)",
+                        }}
+                      >
+                        {formatCurrency(cb.netCashMovement)}
+                      </td>
+                      <td style={{ textAlign: "center", color: "var(--ink-2)" }}>
+                        {cb.salesCount + cb.refundsCount + cb.repairsCount} ops
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

@@ -416,175 +416,177 @@ export function ReviewInboxView() {
             </div>
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table className="pos-table" style={{ width: "100%", fontSize: "13px" }}>
-              <thead>
-                <tr style={{ background: "var(--surface-sunken)" }}>
-                  <th style={{ padding: "10px 14px", textAlign: "left" }}>What</th>
-                  <th style={{ padding: "10px 14px", textAlign: "left" }}>Who</th>
-                  <th style={{ padding: "10px 14px", textAlign: "left" }}>Branch</th>
-                  <th style={{ padding: "10px 14px", textAlign: "left" }}>When</th>
-                  <th style={{ padding: "10px 14px", textAlign: "left" }}>Details</th>
-                  <th style={{ padding: "10px 14px", textAlign: "right" }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredItems.map((it: any) => {
-                  let whatText = "";
-                  let whoText = "";
-                  let branchText = "";
-                  let whenText = "";
-                  let detailsElement: React.ReactNode = null;
+          <div className="pos-table-container">
+            <div className="pos-table-scroll">
+              <table className="pos-table" style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>What</th>
+                    <th>Who</th>
+                    <th>Branch</th>
+                    <th>When</th>
+                    <th>Details</th>
+                    <th style={{ textAlign: "right" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredItems.map((it: any) => {
+                    let whatText = "";
+                    let whoText = "";
+                    let branchText = "";
+                    let whenText = "";
+                    let detailsElement: React.ReactNode = null;
 
-                  if (activeTab === "products") {
-                    whatText = it.name;
-                    whoText = it.createdBy || "Cashier";
-                    branchText = "All Outlets";
-                    whenText = formatDate(it.createdAt);
-                    detailsElement = (
-                      <div>
-                        <span className="badge badge-neutral" style={{ marginRight: "6px" }}>{it.productType}</span>
-                        <span>{it.categoryName} &bull; {it.brandName}</span>
-                      </div>
-                    );
-                  } else if (activeTab === "suppliers") {
-                    whatText = it.name;
-                    whoText = "Cashier";
-                    branchText = "Central";
-                    whenText = formatDate(it.createdAt);
-                    detailsElement = (
-                      <div>
-                        <span>Phone: {it.phone}</span>
-                        {it.contactPerson && it.contactPerson !== "N/A" && (
-                          <span style={{ color: "var(--ink-3)", marginLeft: "8px" }}>Attn: {it.contactPerson}</span>
-                        )}
-                      </div>
-                    );
-                  } else if (activeTab === "purchases") {
-                    whatText = `${it.purchaseNumber} (${it.supplierName})`;
-                    whoText = it.receivedBy || "Cashier";
-                    branchText = it.branchName;
-                    whenText = formatDate(it.receivedAt);
-                    detailsElement = (
-                      <div>
-                        <span style={{ fontWeight: "700" }}>{formatCurrency(it.totalAmount)}</span>
-                        <span className="badge badge-neutral" style={{ marginLeft: "8px" }}>{it.paymentMethod}</span>
-                        {it.costVarianceFlagged && (
-                          <span className="badge badge-danger" style={{ marginLeft: "6px" }}>Cost variance</span>
-                        )}
-                      </div>
-                    );
-                  } else if (activeTab === "cheques") {
-                    whatText = `Cheque #${it.chequeNumber}`;
-                    whoText = it.issuedBy || "Cashier";
-                    branchText = it.branchName;
-                    whenText = formatDate(it.createdAt);
-                    detailsElement = (
-                      <div>
-                        <span style={{ fontWeight: "700" }}>{formatCurrency(it.amount)}</span> &bull; {it.bankName}
-                        <div style={{ fontSize: "11px", color: "var(--ink-3)" }}>Payee: {it.supplierName} &bull; Due: {formatDate(it.dueDate)}</div>
-                      </div>
-                    );
-                  } else if (activeTab === "priceOverrides") {
-                    whatText = it.productName;
-                    whoText = it.cashierName;
-                    branchText = it.branchName;
-                    whenText = formatDate(it.createdAt);
-                    detailsElement = (
-                      <div>
-                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                          <span style={{ textDecoration: "line-through", color: "var(--ink-3)" }}>
-                            {formatCurrency(it.listPrice)}
-                          </span>
-                          <span style={{ fontWeight: "700", color: "var(--ink)" }}>
-                            {formatCurrency(it.priceCharged)}
-                          </span>
-                          <span className="badge badge-danger">
-                            -{formatCurrency(it.reduction)} ({it.reductionPercent.toFixed(1)}% off)
-                          </span>
+                    if (activeTab === "products") {
+                      whatText = it.name;
+                      whoText = it.createdBy || "Cashier";
+                      branchText = "All Outlets";
+                      whenText = formatDate(it.createdAt);
+                      detailsElement = (
+                        <div>
+                          <span className="badge badge-neutral" style={{ marginRight: "6px" }}>{it.productType}</span>
+                          <span>{it.categoryName} &bull; {it.brandName}</span>
                         </div>
-                        <div style={{ fontSize: "11px", color: "var(--ink-3)", marginTop: "2px" }}>
-                          Inv #{it.invoiceNumber} &bull; Reason: {it.reason}
+                      );
+                    } else if (activeTab === "suppliers") {
+                      whatText = it.name;
+                      whoText = "Cashier";
+                      branchText = "Central";
+                      whenText = formatDate(it.createdAt);
+                      detailsElement = (
+                        <div>
+                          <span>Phone: {it.phone}</span>
+                          {it.contactPerson && it.contactPerson !== "N/A" && (
+                            <span style={{ color: "var(--ink-3)", marginLeft: "8px" }}>Attn: {it.contactPerson}</span>
+                          )}
                         </div>
-                      </div>
-                    );
-                  } else if (activeTab === "transfers") {
-                    whatText = it.transferNumber;
-                    whoText = it.dispatchedBy;
-                    branchText = `${it.sourceBranch} → ${it.destinationBranch}`;
-                    whenText = formatDate(it.dispatchedAt);
-                    detailsElement = (
-                      <div>
-                        <span style={{ fontWeight: "700" }}>{it.totalQuantity} pairs</span>
-                        <span className="badge badge-primary" style={{ marginLeft: "8px" }}>QUICK</span>
-                      </div>
-                    );
-                  } else if (activeTab === "warranties") {
-                    whatText = `${it.repairNumber} (${it.itemType})`;
-                    whoText = it.receivedBy || "Cashier";
-                    branchText = it.branchName;
-                    whenText = formatDate(it.receivedAt);
-                    detailsElement = (
-                      <div>
-                        <span style={{ fontWeight: "600" }}>{it.customerName} ({it.customerPhone})</span>
-                        <div style={{ fontSize: "11px", color: "var(--ink-3)" }}>
-                          Article: {it.itemDescription} &bull; Card: {it.warrantyCardNumber}
+                      );
+                    } else if (activeTab === "purchases") {
+                      whatText = `${it.purchaseNumber} (${it.supplierName})`;
+                      whoText = it.receivedBy || "Cashier";
+                      branchText = it.branchName;
+                      whenText = formatDate(it.receivedAt);
+                      detailsElement = (
+                        <div>
+                          <span style={{ fontWeight: "700" }}>{formatCurrency(it.totalAmount)}</span>
+                          <span className="badge badge-neutral" style={{ marginLeft: "8px" }}>{it.paymentMethod}</span>
+                          {it.costVarianceFlagged && (
+                            <span className="badge badge-danger" style={{ marginLeft: "6px" }}>Cost variance</span>
+                          )}
                         </div>
-                      </div>
-                    );
-                  } else if (activeTab === "creditSales") {
-                    whatText = it.invoiceNumber;
-                    whoText = it.cashierName;
-                    branchText = it.branchName;
-                    whenText = formatDate(it.createdAt);
-                    detailsElement = (
-                      <div>
-                        <span>Bill: {formatCurrency(it.total)} &bull; Paid: {formatCurrency(it.amountPaid)}</span>
-                        <div style={{ fontWeight: "700", color: "var(--danger)", fontSize: "12px" }}>
-                          Balance due: {formatCurrency(it.balanceDue)} ({it.customerName})
+                      );
+                    } else if (activeTab === "cheques") {
+                      whatText = `Cheque #${it.chequeNumber}`;
+                      whoText = it.issuedBy || "Cashier";
+                      branchText = it.branchName;
+                      whenText = formatDate(it.createdAt);
+                      detailsElement = (
+                        <div>
+                          <span style={{ fontWeight: "700" }}>{formatCurrency(it.amount)}</span> &bull; {it.bankName}
+                          <div style={{ fontSize: "11px", color: "var(--ink-3)" }}>Payee: {it.supplierName} &bull; Due: {formatDate(it.dueDate)}</div>
                         </div>
-                      </div>
-                    );
-                  }
+                      );
+                    } else if (activeTab === "priceOverrides") {
+                      whatText = it.productName;
+                      whoText = it.cashierName;
+                      branchText = it.branchName;
+                      whenText = formatDate(it.createdAt);
+                      detailsElement = (
+                        <div>
+                          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                            <span style={{ textDecoration: "line-through", color: "var(--ink-3)" }}>
+                              {formatCurrency(it.listPrice)}
+                            </span>
+                            <span style={{ fontWeight: "700", color: "var(--ink)" }}>
+                              {formatCurrency(it.priceCharged)}
+                            </span>
+                            <span className="badge badge-danger">
+                              -{formatCurrency(it.reduction)} ({it.reductionPercent.toFixed(1)}% off)
+                            </span>
+                          </div>
+                          <div style={{ fontSize: "11px", color: "var(--ink-3)", marginTop: "2px" }}>
+                            Inv #{it.invoiceNumber} &bull; Reason: {it.reason}
+                          </div>
+                        </div>
+                      );
+                    } else if (activeTab === "transfers") {
+                      whatText = it.transferNumber;
+                      whoText = it.dispatchedBy;
+                      branchText = `${it.sourceBranch} → ${it.destinationBranch}`;
+                      whenText = formatDate(it.dispatchedAt);
+                      detailsElement = (
+                        <div>
+                          <span style={{ fontWeight: "700" }}>{it.totalQuantity} pairs</span>
+                          <span className="badge badge-primary" style={{ marginLeft: "8px" }}>QUICK</span>
+                        </div>
+                      );
+                    } else if (activeTab === "warranties") {
+                      whatText = `${it.repairNumber} (${it.itemType})`;
+                      whoText = it.receivedBy || "Cashier";
+                      branchText = it.branchName;
+                      whenText = formatDate(it.receivedAt);
+                      detailsElement = (
+                        <div>
+                          <span style={{ fontWeight: "600" }}>{it.customerName} ({it.customerPhone})</span>
+                          <div style={{ fontSize: "11px", color: "var(--ink-3)" }}>
+                            Article: {it.itemDescription} &bull; Card: {it.warrantyCardNumber}
+                          </div>
+                        </div>
+                      );
+                    } else if (activeTab === "creditSales") {
+                      whatText = it.invoiceNumber;
+                      whoText = it.cashierName;
+                      branchText = it.branchName;
+                      whenText = formatDate(it.createdAt);
+                      detailsElement = (
+                        <div>
+                          <span>Bill: {formatCurrency(it.total)} &bull; Paid: {formatCurrency(it.amountPaid)}</span>
+                          <div style={{ fontWeight: "700", color: "var(--danger)", fontSize: "12px" }}>
+                            Balance due: {formatCurrency(it.balanceDue)} ({it.customerName})
+                          </div>
+                        </div>
+                      );
+                    }
 
-                  return (
-                    <tr key={it.id}>
-                      <td style={{ padding: "10px 14px", fontWeight: "700" }}>{whatText}</td>
-                      <td style={{ padding: "10px 14px" }}>{whoText}</td>
-                      <td style={{ padding: "10px 14px", color: "var(--ink-2)" }}>{branchText}</td>
-                      <td style={{ padding: "10px 14px", fontVariantNumeric: "tabular-nums" }}>{whenText}</td>
-                      <td style={{ padding: "10px 14px" }}>{detailsElement}</td>
-                      <td style={{ padding: "10px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
-                        <div style={{ display: "inline-flex", gap: "6px" }}>
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            title="Mark reviewed with note"
-                            onClick={() =>
-                              setReviewingItem({
-                                category: activeTab,
-                                itemId: it.id,
-                                title: whatText,
-                              })
-                            }
-                          >
-                            <MessageSquare size={13} />
-                            <span>Note</span>
-                          </button>
-                          <button
-                            className="btn btn-primary btn-sm"
-                            title="Mark reviewed"
-                            onClick={() => handleQuickMark(activeTab, it.id, whatText)}
-                          >
-                            <CheckCircle2 size={13} />
-                            <span>Mark reviewed</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                    return (
+                      <tr key={it.id}>
+                        <td style={{ fontWeight: "700" }}>{whatText}</td>
+                        <td>{whoText}</td>
+                        <td style={{ color: "var(--ink-2)" }}>{branchText}</td>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}>{whenText}</td>
+                        <td>{detailsElement}</td>
+                        <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                          <div style={{ display: "inline-flex", gap: "6px" }}>
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              title="Mark reviewed with note"
+                              onClick={() =>
+                                setReviewingItem({
+                                  category: activeTab,
+                                  itemId: it.id,
+                                  title: whatText,
+                                })
+                              }
+                            >
+                              <MessageSquare size={13} />
+                              <span>Note</span>
+                            </button>
+                            <button
+                              className="btn btn-primary btn-sm"
+                              title="Mark reviewed"
+                              onClick={() => handleQuickMark(activeTab, it.id, whatText)}
+                            >
+                              <CheckCircle2 size={13} />
+                              <span>Mark reviewed</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -594,20 +596,10 @@ export function ReviewInboxView() {
         <div
           role="dialog"
           aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            backdropFilter: "blur(2px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "16px",
-          }}
+          className="modal-backdrop"
         >
           <div
-            className="card animate-fade-in"
+            className="card animate-fade-in modal-panel"
             style={{
               width: "100%",
               maxWidth: "460px",

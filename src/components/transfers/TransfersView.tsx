@@ -679,8 +679,9 @@ export function TransfersView() {
                 No items added yet. Scan a product barcode or enter a SKU above to build the transfer list.
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table className="pos-table">
+              <div className="pos-table-container" style={{ border: "none", borderRadius: 0 }}>
+                <div style={{ overflowX: "auto", maxHeight: "380px", position: "relative" }}>
+                  <table className="pos-table pos-table-form">
                   <thead>
                     <tr>
                       <th>Product model</th>
@@ -764,8 +765,9 @@ export function TransfersView() {
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
+            </div>
+          )}
+        </div>
 
           {/* Notes and Action Bar */}
           {quickTransferItems.length > 0 && (
@@ -827,14 +829,7 @@ export function TransfersView() {
           TAB 2: FORMAL TRANSFERS (DISPATCH & RECEIVE)
       ══════════════════════════════════════════════════════════ */}
       {activeTab === "FORMAL" && (
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--line)",
-            borderRadius: "var(--radius-tile)",
-            overflow: "hidden",
-          }}
-        >
+        <div className="pos-table-container">
           <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
             <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
               Formal Stock Transfers &bull; Dispatched & In-Transit ({formalPendingTransfers.length})
@@ -846,7 +841,7 @@ export function TransfersView() {
               No formal transfers found. Use &quot;Dispatch formal transfer&quot; above to initiate a dispatch note.
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div className="pos-table-scroll">
               <table className="pos-table">
                 <thead>
                   <tr>
@@ -978,20 +973,13 @@ export function TransfersView() {
             </select>
           </div>
 
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--line)",
-              borderRadius: "var(--radius-tile)",
-              overflow: "hidden",
-            }}
-          >
+          <div className="pos-table-container">
             {filteredHistory.length === 0 ? (
               <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--ink-2)", fontSize: "14px" }}>
                 No transfers found matching filter criteria.
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div className="pos-table-scroll">
                 <table className="pos-table">
                   <thead>
                     <tr>

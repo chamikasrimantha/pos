@@ -838,73 +838,75 @@ export function DailySalesView() {
         </div>
 
         {/* Desktop Invoices Table */}
-        <div className="desktop-only-table" style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-            <thead>
-              <tr style={{ background: "var(--surface-muted, #f9fafb)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
-                <th style={{ padding: "8px 12px" }}>Invoice #</th>
-                <th style={{ padding: "8px 12px" }}>Time</th>
-                <th style={{ padding: "8px 12px" }}>Cashier</th>
-                <th style={{ padding: "8px 12px" }}>Customer</th>
-                <th style={{ padding: "8px 12px", textAlign: "center" }}>Status</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Net Total</th>
-                <th style={{ padding: "8px 12px", textAlign: "center" }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dailyData.sales.length === 0 ? (
+        <div className="desktop-only-table pos-table-container">
+          <div className="pos-table-scroll">
+            <table className="pos-table">
+              <thead>
                 <tr>
-                  <td colSpan={7} style={{ padding: "16px", textAlign: "center", color: "var(--ink-3)" }}>
-                    No invoices recorded on this day.
-                  </td>
+                  <th>Invoice #</th>
+                  <th>Time</th>
+                  <th>Cashier</th>
+                  <th>Customer</th>
+                  <th style={{ textAlign: "center" }}>Status</th>
+                  <th className="num">Net Total</th>
+                  <th style={{ textAlign: "center" }}>Action</th>
                 </tr>
-              ) : (
-                dailyData.sales.map((sale) => (
-                  <tr key={sale.id} style={{ borderBottom: "1px solid var(--line)" }}>
-                    <td style={{ padding: "10px 12px", fontWeight: "700" }}>{sale.invoiceNumber}</td>
-                    <td style={{ padding: "10px 12px", color: "var(--ink-2)" }}>{formatDate(sale.createdAt)}</td>
-                    <td style={{ padding: "10px 12px" }}>{sale.cashierNameCache || "Cashier"}</td>
-                    <td style={{ padding: "10px 12px" }}>{sale.customerName || "Walk-in"}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "center" }}>
-                      <span
-                        className={`badge ${
-                          sale.status === "COMPLETED"
-                            ? sale.returnStatus === "PARTIALLY_RETURNED"
-                              ? "badge-warning"
-                              : sale.returnStatus === "FULLY_RETURNED"
-                              ? "badge-danger"
-                              : "badge-success"
-                            : "badge-neutral"
-                        }`}
-                        style={{ fontSize: "11px" }}
-                      >
-                        {sale.status === "COMPLETED"
-                          ? sale.returnStatus === "PARTIALLY_RETURNED"
-                            ? "PARTIAL RETURN"
-                            : sale.returnStatus === "FULLY_RETURNED"
-                            ? "RETURNED"
-                            : "COMPLETED"
-                          : "CANCELLED"}
-                      </span>
-                    </td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: "700" }}>
-                      {formatCurrency(sale.total)}
-                    </td>
-                    <td style={{ padding: "10px 12px", textAlign: "center" }}>
-                      <button
-                        onClick={() => handlePrintSingleInvoice(sale)}
-                        className="btn btn-secondary btn-sm"
-                        style={{ height: "30px", padding: "0 8px", borderRadius: "8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                      >
-                        <Printer size={13} />
-                        <span>Print</span>
-                      </button>
+              </thead>
+              <tbody>
+                {dailyData.sales.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ padding: "32px", textAlign: "center", color: "var(--ink-3)" }}>
+                      No invoices recorded on this day.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  dailyData.sales.map((sale) => (
+                    <tr key={sale.id}>
+                      <td style={{ fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>{sale.invoiceNumber}</td>
+                      <td style={{ color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{formatDate(sale.createdAt)}</td>
+                      <td>{sale.cashierNameCache || "Cashier"}</td>
+                      <td>{sale.customerName || "Walk-in"}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <span
+                          className={`badge ${
+                            sale.status === "COMPLETED"
+                              ? sale.returnStatus === "PARTIALLY_RETURNED"
+                                ? "badge-warning"
+                                : sale.returnStatus === "FULLY_RETURNED"
+                                ? "badge-danger"
+                                : "badge-success"
+                              : "badge-neutral"
+                          }`}
+                          style={{ fontSize: "11px", height: "24px" }}
+                        >
+                          {sale.status === "COMPLETED"
+                            ? sale.returnStatus === "PARTIALLY_RETURNED"
+                              ? "PARTIAL RETURN"
+                              : sale.returnStatus === "FULLY_RETURNED"
+                              ? "RETURNED"
+                              : "COMPLETED"
+                            : "CANCELLED"}
+                        </span>
+                      </td>
+                      <td className="num" style={{ fontWeight: "800" }}>
+                        {formatCurrency(sale.total)}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <button
+                          onClick={() => handlePrintSingleInvoice(sale)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ height: "30px", padding: "0 8px", borderRadius: "8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        >
+                          <Printer size={13} />
+                          <span>Print</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Mobile Invoices Cards */}
@@ -1009,47 +1011,49 @@ export function DailySalesView() {
           </span>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table className="pos-table" style={{ width: "100%", fontSize: "13px" }}>
-            <thead>
-              <tr style={{ background: "var(--surface-sunken)" }}>
-                <th style={{ padding: "8px 12px", textAlign: "left" }}>Product</th>
-                <th style={{ padding: "8px 12px", textAlign: "left" }}>Invoice #</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Catalogue Price</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Charged</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Reduction</th>
-                <th style={{ padding: "8px 12px", textAlign: "left" }}>Cashier</th>
-                <th style={{ padding: "8px 12px", textAlign: "left" }}>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(!dailyData.priceOverrides || dailyData.priceOverrides.length === 0) ? (
+        <div className="pos-table-container">
+          <div className="pos-table-scroll">
+            <table className="pos-table" style={{ width: "100%" }}>
+              <thead>
                 <tr>
-                  <td colSpan={7} style={{ padding: "16px", textAlign: "center", color: "var(--ink-3)" }}>
-                    No price overrides recorded for this date.
-                  </td>
+                  <th>Product</th>
+                  <th>Invoice #</th>
+                  <th className="num">Catalogue Price</th>
+                  <th className="num">Charged</th>
+                  <th className="num">Reduction</th>
+                  <th>Cashier</th>
+                  <th>Reason</th>
                 </tr>
-              ) : (
-                dailyData.priceOverrides.map((po, idx) => (
-                  <tr key={`${po.saleId}_${idx}`}>
-                    <td style={{ padding: "8px 12px", fontWeight: "600" }}>{po.productName}</td>
-                    <td style={{ padding: "8px 12px", fontVariantNumeric: "tabular-nums" }}>{po.invoiceNumber}</td>
-                    <td style={{ padding: "8px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {formatCurrency(po.listPrice)}
+              </thead>
+              <tbody>
+                {(!dailyData.priceOverrides || dailyData.priceOverrides.length === 0) ? (
+                  <tr>
+                    <td colSpan={7} style={{ padding: "32px", textAlign: "center", color: "var(--ink-3)" }}>
+                      No price overrides recorded for this date.
                     </td>
-                    <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
-                      {formatCurrency(po.priceCharged)}
-                    </td>
-                    <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--danger)", fontWeight: "700", fontVariantNumeric: "tabular-nums" }}>
-                      -{formatCurrency(po.reduction)} ({po.reductionPercent.toFixed(1)}%)
-                    </td>
-                    <td style={{ padding: "8px 12px" }}>{po.cashierName}</td>
-                    <td style={{ padding: "8px 12px", color: "var(--ink-2)", fontSize: "12px" }}>{po.reason || "Manual override"}</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  dailyData.priceOverrides.map((po, idx) => (
+                    <tr key={`${po.saleId}_${idx}`}>
+                      <td style={{ fontWeight: "600" }}>{po.productName}</td>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}>{po.invoiceNumber}</td>
+                      <td className="num">
+                        {formatCurrency(po.listPrice)}
+                      </td>
+                      <td className="num" style={{ fontWeight: "700" }}>
+                        {formatCurrency(po.priceCharged)}
+                      </td>
+                      <td className="num" style={{ color: "var(--danger)", fontWeight: "700" }}>
+                        -{formatCurrency(po.reduction)} ({po.reductionPercent.toFixed(1)}%)
+                      </td>
+                      <td>{po.cashierName}</td>
+                      <td style={{ color: "var(--ink-2)" }}>{po.reason || "Manual override"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -1078,43 +1082,45 @@ export function DailySalesView() {
           </span>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table className="pos-table" style={{ width: "100%", fontSize: "13px" }}>
-            <thead>
-              <tr style={{ background: "var(--surface-sunken)" }}>
-                <th style={{ padding: "8px 12px", textAlign: "left" }}>Purchase #</th>
-                <th style={{ padding: "8px 12px", textAlign: "left" }}>Supplier</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Bill Amount</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Cash Paid</th>
-                <th style={{ padding: "8px 12px", textAlign: "left" }}>Received By</th>
-                <th style={{ padding: "8px 12px", textAlign: "left" }}>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(!dailyData.purchasesPaidInCash || dailyData.purchasesPaidInCash.length === 0) ? (
+        <div className="pos-table-container">
+          <div className="pos-table-scroll">
+            <table className="pos-table" style={{ width: "100%" }}>
+              <thead>
                 <tr>
-                  <td colSpan={6} style={{ padding: "16px", textAlign: "center", color: "var(--ink-3)" }}>
-                    No cash purchases paid on this date.
-                  </td>
+                  <th>Purchase #</th>
+                  <th>Supplier</th>
+                  <th className="num">Bill Amount</th>
+                  <th className="num">Cash Paid</th>
+                  <th>Received By</th>
+                  <th>Time</th>
                 </tr>
-              ) : (
-                dailyData.purchasesPaidInCash.map((pc) => (
-                  <tr key={pc.id}>
-                    <td style={{ padding: "8px 12px", fontWeight: "600" }}>{pc.purchaseNumber}</td>
-                    <td style={{ padding: "8px 12px" }}>{pc.supplierName}</td>
-                    <td style={{ padding: "8px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {formatCurrency(pc.amount)}
+              </thead>
+              <tbody>
+                {(!dailyData.purchasesPaidInCash || dailyData.purchasesPaidInCash.length === 0) ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "var(--ink-3)" }}>
+                      No cash purchases paid on this date.
                     </td>
-                    <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: "700", color: "var(--danger)", fontVariantNumeric: "tabular-nums" }}>
-                      {formatCurrency(pc.paidAmount)}
-                    </td>
-                    <td style={{ padding: "8px 12px" }}>{pc.receivedBy}</td>
-                    <td style={{ padding: "8px 12px", color: "var(--ink-2)", fontSize: "12px" }}>{formatDate(pc.time)}</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  dailyData.purchasesPaidInCash.map((pc) => (
+                    <tr key={pc.id}>
+                      <td style={{ fontWeight: "600" }}>{pc.purchaseNumber}</td>
+                      <td>{pc.supplierName}</td>
+                      <td className="num">
+                        {formatCurrency(pc.amount)}
+                      </td>
+                      <td className="num" style={{ fontWeight: "700", color: "var(--danger)" }}>
+                        {formatCurrency(pc.paidAmount)}
+                      </td>
+                      <td>{pc.receivedBy}</td>
+                      <td style={{ color: "var(--ink-2)", fontSize: "12px" }}>{formatDate(pc.time)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -1123,20 +1129,10 @@ export function DailySalesView() {
         <div
           role="dialog"
           aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            backdropFilter: "blur(2px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "16px",
-          }}
+          className="modal-backdrop"
         >
           <div
-            className="card animate-fade-in"
+            className="card animate-fade-in modal-panel"
             style={{
               width: "100%",
               maxWidth: "800px",

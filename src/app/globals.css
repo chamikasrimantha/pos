@@ -114,8 +114,12 @@ html, body {
 }
 
 /* ─── Scrollbars ────────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track  { background: var(--surface-sunken); }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track  { background: transparent; }
 ::-webkit-scrollbar-thumb  { background: var(--line-strong); border-radius: 9999px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--ink-3); }
 
@@ -283,49 +287,119 @@ html, body {
 /* ══════════════════════════════════════════════════════════════════════════
    TABLES  §8
    ══════════════════════════════════════════════════════════════════════════ */
+.pos-table-container {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-tile);
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(16, 24, 40, 0.04);
+  display: flex;
+  flex-direction: column;
+}
+
+.pos-table-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  max-height: 72vh;
+}
+
 .pos-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 15px;
+  font-size: 14px;
+  text-align: left;
 }
+
+.pos-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
 .pos-table th {
   height: 44px;
   background: var(--surface-sunken);
   color: var(--ink-2);
-  font-weight: 600;
-  font-size: 13px;
+  font-weight: 700;
+  font-size: 12px;
   text-align: left;
-  padding: 0 14px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
+
 .pos-table td {
   height: 52px;
-  padding: 0 14px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--line);
   color: var(--ink);
   vertical-align: middle;
   white-space: nowrap;
+  font-size: 14px;
 }
+
 .pos-table td.wrap-cell {
   white-space: normal;
 }
-.pos-table tr:hover td { background: var(--canvas); }
+
+.pos-table tbody tr {
+  transition: background-color var(--motion-hover);
+}
+
+.pos-table tbody tr:hover td {
+  background: #F8FAFC;
+}
+
+.pos-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .pos-table td.num,
 .pos-table th.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
 .pos-table input[type="checkbox"] {
-  width: 17px !important;
-  height: 17px !important;
-  min-height: 17px !important;
+  width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
   border-radius: 4px !important;
   accent-color: var(--primary);
   cursor: pointer;
   vertical-align: middle;
+}
+
+/* Compact data-entry table for forms (Size-run grids, inward lines, transfer items) */
+.pos-table-form {
+  font-size: 13px;
+}
+.pos-table-form th {
+  height: 38px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.pos-table-form td {
+  height: 44px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.pos-table-form input.input-field,
+.pos-table-form select.input-field {
+  height: 34px;
+  font-size: 13px;
+  border-radius: 6px;
+  padding: 0 8px;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -394,21 +468,34 @@ html, body {
   position: fixed;
   inset: 0;
   background: rgba(16, 24, 40, 0.45);
+  backdrop-filter: blur(2px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 9000;
-  padding: 24px;
+  padding: 24px 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
-.modal-panel {
+.modal-panel,
+.modal-card {
   background: var(--surface);
   border-radius: var(--radius-modal);
   box-shadow: var(--shadow-float);
+  border: 1px solid var(--line);
   padding: 24px;
   width: 100%;
-  max-width: 440px;
+  max-width: 480px;
+  margin: auto 0;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
+.modal-panel-sm { max-width: 400px; }
 .modal-panel-lg { max-width: 640px; }
+.modal-panel-xl { max-width: 860px; }
 
 /* ══════════════════════════════════════════════════════════════════════════
    TOAST  §8
